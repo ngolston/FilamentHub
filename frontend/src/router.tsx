@@ -15,6 +15,7 @@ const PrintJobsPage   = lazy(() => import('@/features/print-jobs/PrintJobsPage')
 const FilamentsPage   = lazy(() => import('@/features/filaments/FilamentsPage'))
 const DryingPage      = lazy(() => import('@/features/drying/DryingPage'))
 const AlertsPage      = lazy(() => import('@/features/alerts/AlertsPage'))
+const QrLabelsPage    = lazy(() => import('@/features/qr-labels/QrLabelsPage'))
 const SettingsPage    = lazy(() => import('@/features/settings/SettingsPage'))
 
 function RequireAuth() {
@@ -60,6 +61,7 @@ export const router = createBrowserRouter([
           { path: '/filaments',   element: <FilamentsPage /> },
           { path: '/drying',      element: <DryingPage /> },
           { path: '/alerts',      element: <AlertsPage /> },
+          { path: '/qr-labels',   element: <QrLabelsPage /> },
           { path: '/settings',    element: <SettingsPage /> },
         ],
       },
