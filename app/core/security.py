@@ -1,24 +1,23 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import bcrypt
 import pyotp
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from app.core.config import get_settings
 
 settings = get_settings()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 # ── Password ──────────────────────────────────────────────────────────────────
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode(), hashed.encode())
 
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
@@ -66,9 +65,9 @@ import secrets
 def generate_api_key() -> tuple[str, str]:
     """Returns (raw_key, hashed_key). Store only the hash."""
     raw = f"fh_{secrets.token_urlsafe(32)}"
-    hashed = pwd_context.hash(raw)
+    hashed = bcrypt.hashpw(raw.encode(), bcrypt.gensalt()).decode()
     return raw, hashed
 
 
 def verify_api_key(raw: str, hashed: str) -> bool:
-    return pwd_context.verify(raw, hashed)
+    return bcrypt.checkpw(raw.encode(), hashed.encode())

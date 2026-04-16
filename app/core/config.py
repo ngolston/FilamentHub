@@ -30,7 +30,11 @@ class Settings(BaseSettings):
     @classmethod
     def parse_cors(cls, v: str | list) -> list[str]:
         if isinstance(v, str):
-            return [origin.strip() for origin in v.split(",")]
+            v = v.strip()
+            if v.startswith("["):
+                import json
+                return json.loads(v)
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
     # ── Object Storage (MinIO / S3) ───────────────────────────────────────────
