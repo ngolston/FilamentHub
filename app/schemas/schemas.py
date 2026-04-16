@@ -265,6 +265,31 @@ class PrinterUpdate(BaseModel):
     notes: str | None = None
 
 
+class AmsFilamentSummary(OrmBase):
+    color_hex: str | None = None
+    name: str | None = None
+    material: str | None = None
+
+
+class AmsSpoolSummary(OrmBase):
+    id: int
+    name: str | None = None
+    filament: AmsFilamentSummary | None = None
+
+
+class AmsSlotSchema(OrmBase):
+    slot_index: int
+    spool_id: int | None = None
+    spool: AmsSpoolSummary | None = None
+
+
+class AmsUnitSchema(OrmBase):
+    id: int
+    unit_index: int
+    name: str
+    slots: list[AmsSlotSchema] = []
+
+
 class PrinterResponse(OrmBase):
     id: int
     name: str
@@ -274,6 +299,7 @@ class PrinterResponse(OrmBase):
     notes: str | None
     created_at: datetime
     last_seen_at: datetime | None
+    ams_units: list[AmsUnitSchema] = []
 
 
 # ── Print jobs ────────────────────────────────────────────────────────────────

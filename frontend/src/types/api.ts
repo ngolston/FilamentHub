@@ -270,6 +270,7 @@ export interface PrinterResponse {
   notes: string | null
   created_at: string
   last_seen_at: string | null
+  ams_units: AmsUnit[]
 }
 
 export interface PrinterCreate {
@@ -283,9 +284,22 @@ export interface PrinterCreate {
 
 export type PrinterUpdate = Partial<PrinterCreate>
 
+export interface AmsFilamentSummary {
+  color_hex: string | null
+  name: string | null
+  material: string | null
+}
+
+export interface AmsSpoolSummary {
+  id: number
+  name: string | null
+  filament: AmsFilamentSummary | null
+}
+
 export interface AmsSlot {
   slot_index: number
   spool_id: number | null
+  spool: AmsSpoolSummary | null
 }
 
 export interface AmsUnit {
