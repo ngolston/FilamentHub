@@ -19,6 +19,7 @@ from app.core.security import (
 from app.db.session import get_db
 from app.models.models import User
 from app.schemas.schemas import (
+    ChangePasswordRequest,
     RefreshRequest,
     TokenResponse,
     TotpSetupResponse,
@@ -100,6 +101,20 @@ async def refresh_token(body: RefreshRequest, db: AsyncSession = Depends(get_db)
 @router.get("/me", response_model=UserResponse)
 async def me(current_user: User = Depends(get_current_user)):
     return current_user
+
+
+# ── Password change ───────────────────────────────────────────────────────────
+
+@router.post("/change-password", status_code=status.HTTP_204_NO_CONTENT)
+async def change_password(
+    body: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Change the authenticated user's password after verifying the current one."""
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    current_user.hashed_password = hash_password(body.new_password)
 
 
 # ── 2FA ───────────────────────────────────────────────────────────────────────

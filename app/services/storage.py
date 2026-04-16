@@ -61,6 +61,28 @@ async def upload_spool_photo(spool_id: int, file: UploadFile) -> str:
     return f"{base}/{settings.MINIO_BUCKET}/{key}"
 
 
+async def upload_avatar(user_id: str, file: UploadFile) -> str:
+    """Upload a user avatar to MinIO and return its public URL."""
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
+    if ext not in {"jpg", "jpeg", "png", "webp", "gif"}:
+        ext = "jpg"
+    key = f"avatars/{user_id}/{uuid.uuid4().hex}.{ext}"
+
+    content = await file.read()
+    client = _get_client()
+    _ensure_bucket(client)
+
+    client.put_object(
+        Bucket=settings.MINIO_BUCKET,
+        Key=key,
+        Body=BytesIO(content),
+        ContentType=file.content_type or "image/jpeg",
+    )
+
+    base = f"{'https' if settings.MINIO_SECURE else 'http'}://{settings.MINIO_ENDPOINT}"
+    return f"{base}/{settings.MINIO_BUCKET}/{key}"
+
+
 async def delete_object(key: str) -> None:
     client = _get_client()
     client.delete_object(Bucket=settings.MINIO_BUCKET, Key=key)

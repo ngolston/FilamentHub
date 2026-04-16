@@ -5,6 +5,16 @@ export const usersApi = {
   updateMe: (data: UserUpdate) =>
     api.patch<UserResponse>('/users/me', data).then((r) => r.data),
 
+  uploadAvatar: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api
+      .post<UserResponse>('/users/me/avatar', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data)
+  },
+
   listApiKeys: () =>
     api.get<ApiKeyInfo[]>('/users/me/api-keys').then((r) => r.data),
 

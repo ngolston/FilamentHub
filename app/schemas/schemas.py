@@ -72,6 +72,12 @@ class UserUpdate(BaseModel):
     preferred_temp_unit: str | None = None
     preferred_currency: str | None = None
     timezone: str | None = None
+    avatar_url: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: Annotated[str, Field(min_length=8, max_length=100)]
 
 
 # ── Brands ────────────────────────────────────────────────────────────────────

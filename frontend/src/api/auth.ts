@@ -27,4 +27,7 @@ export const authApi = {
 
   totpDisable: (code: string) =>
     api.post<{ message: string }>('/auth/totp/disable', { code }).then((r) => r.data),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post('/auth/change-password', { current_password: currentPassword, new_password: newPassword }),
 }

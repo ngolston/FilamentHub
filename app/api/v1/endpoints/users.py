@@ -1,6 +1,6 @@
 """API key management and user settings endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,8 +9,24 @@ from app.core.security import generate_api_key
 from app.db.session import get_db
 from app.models.models import ApiKey, User
 from app.schemas.schemas import UserResponse, UserUpdate
+from app.services.storage import upload_avatar
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+@router.post("/me/avatar", response_model=UserResponse)
+async def update_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a new avatar image. Replaces any existing avatar."""
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+    url = await upload_avatar(str(current_user.id), file)
+    current_user.avatar_url = url
+    await db.flush()
+    return current_user
 
 
 @router.patch("/me", response_model=UserResponse)
