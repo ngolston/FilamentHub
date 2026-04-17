@@ -1,7 +1,7 @@
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
 export type UserRole = 'admin' | 'editor' | 'viewer'
-export type SpoolStatus = 'active' | 'empty' | 'archived' | 'drying'
+export type SpoolStatus = 'active' | 'storage' | 'archived'
 export type PrinterStatus = 'idle' | 'printing' | 'paused' | 'error' | 'offline'
 export type PrinterConnectionType = 'octoprint' | 'moonraker' | 'bambu' | 'manual'
 export type PrintJobOutcome = 'success' | 'failed' | 'cancelled'
@@ -207,6 +207,9 @@ export interface SpoolResponse {
   purchase_price: number | null
   supplier: string | null
   product_url: string | null
+  extra_color_hex_2: string | null
+  extra_color_hex_3: string | null
+  extra_color_hex_4: string | null
   status: SpoolStatus
   notes: string | null
   registered: string
@@ -235,7 +238,7 @@ export interface SpoolCreate {
 export type SpoolUpdate = Partial<SpoolCreate>
 
 export interface SpoolFilters extends PaginationParams {
-  status?: SpoolStatus
+  status?: SpoolStatus | string   // single value or comma-separated list e.g. 'active,storage'
   material?: string
   brand_id?: number
   location_id?: number

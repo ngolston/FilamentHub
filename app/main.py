@@ -16,6 +16,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.brands import brands_router, filaments_router
@@ -25,6 +26,8 @@ from app.api.v1.endpoints.print_jobs import analytics_router, jobs_router
 from app.api.v1.endpoints.printers import router as printers_router
 from app.api.v1.endpoints.spools import router as spools_router
 from app.api.v1.endpoints.users import router as users_router
+from app.api.v1.endpoints.locations import router as locations_router
+from app.api.v1.endpoints.community import router as community_router
 from app.core.config import get_settings
 from app.db.session import engine
 from app.models import models  # noqa: F401 — registers all models with Base
@@ -34,7 +37,8 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup — nothing extra needed; Alembic handles migrations
+    # Startup — ensure data directories exist
+    settings.photos_path.mkdir(parents=True, exist_ok=True)
     yield
     # Shutdown — dispose the connection pool cleanly
     await engine.dispose()
@@ -76,6 +80,11 @@ app.add_middleware(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
+# ── Static media (uploaded photos) ───────────────────────────────────────────
+# Served at /media/photos/**  →  DATA_DIR/photos/**
+settings.photos_path.mkdir(parents=True, exist_ok=True)
+app.mount("/media/photos", StaticFiles(directory=str(settings.photos_path)), name="media")
+
 # ── Routers ───────────────────────────────────────────────────────────────────
 
 V1 = "/api/v1"
@@ -90,6 +99,8 @@ app.include_router(printers_router,  prefix=V1)
 app.include_router(drying_router,    prefix=V1)
 app.include_router(alerts_router,    prefix=V1)
 app.include_router(data_router,      prefix=V1)
+app.include_router(locations_router, prefix=V1)
+app.include_router(community_router, prefix=V1)
 
 # ── Health & info ─────────────────────────────────────────────────────────────
 

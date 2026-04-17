@@ -21,7 +21,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -44,10 +43,9 @@ class UserRole(str, PyEnum):
 
 
 class SpoolStatus(str, PyEnum):
-    active = "active"       # in rotation
-    empty = "empty"         # fully consumed
-    archived = "archived"   # retired / set aside
-    drying = "drying"       # in dry box
+    active = "active"       # in rotation, loaded or ready to load
+    storage = "storage"     # on the shelf, available to load
+    archived = "archived"   # retired, analytics only
 
 
 class PrinterStatus(str, PyEnum):
@@ -82,7 +80,7 @@ class AlertSeverity(str, PyEnum):
 class User(Base):
     __tablename__ = "users"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -116,7 +114,7 @@ class User(Base):
 class ApiKey(Base):
     __tablename__ = "api_keys"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=new_uuid)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     key_prefix: Mapped[str] = mapped_column(String(12), nullable=False)  # shown in UI e.g. "fh_abc123…"
@@ -243,6 +241,11 @@ class Spool(Base):
     purchase_price: Mapped[float | None] = mapped_column(Float)
     supplier: Mapped[str | None] = mapped_column(String(200))
     product_url: Mapped[str | None] = mapped_column(String(500))
+
+    # Extra colors (for multi-color / gradient / silk filaments)
+    extra_color_hex_2: Mapped[str | None] = mapped_column(String(7))
+    extra_color_hex_3: Mapped[str | None] = mapped_column(String(7))
+    extra_color_hex_4: Mapped[str | None] = mapped_column(String(7))
 
     # Status
     status: Mapped[SpoolStatus] = mapped_column(Enum(SpoolStatus), default=SpoolStatus.active)

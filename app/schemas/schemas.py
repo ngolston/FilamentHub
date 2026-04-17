@@ -164,6 +164,26 @@ class FilamentProfileResponse(OrmBase):
     updated_at: datetime
 
 
+# ── Community import ─────────────────────────────────────────────────────────
+
+class CommunityImportRequest(BaseModel):
+    manufacturer:    str
+    name:            str
+    material:        str
+    color_name:      str | None = None
+    color_hex:       str | None = None
+    diameter:        float = 1.75
+    density:         float | None = None
+    print_temp_min:  int | None = None
+    print_temp_max:  int | None = None
+    bed_temp_min:    int | None = None
+    bed_temp_max:    int | None = None
+    initial_weight:  float = 1000.0
+    spool_weight:    float | None = None
+    purchase_price:  float | None = None
+    location_id:     int | None = None
+
+
 # ── Storage locations ─────────────────────────────────────────────────────────
 
 class LocationCreate(BaseModel):
@@ -194,17 +214,29 @@ class SpoolCreate(BaseModel):
     purchase_price: float | None = None
     supplier: str | None = None
     product_url: str | None = None
+    extra_color_hex_2: str | None = None
+    extra_color_hex_3: str | None = None
+    extra_color_hex_4: str | None = None
     status: str = "active"
     notes: str | None = None
 
 
 class SpoolUpdate(BaseModel):
     filament_id: int | None = None
+    brand_id: int | None = None
     location_id: int | None = None
     name: str | None = None
+    lot_nr: str | None = None
+    initial_weight: float | None = None
+    spool_weight: float | None = None
     used_weight: float | None = None
+    purchase_date: datetime | None = None
     purchase_price: float | None = None
     supplier: str | None = None
+    product_url: str | None = None
+    extra_color_hex_2: str | None = None
+    extra_color_hex_3: str | None = None
+    extra_color_hex_4: str | None = None
     status: str | None = None
     notes: str | None = None
 
@@ -229,6 +261,9 @@ class SpoolResponse(OrmBase):
     purchase_price: float | None
     supplier: str | None
     product_url: str | None
+    extra_color_hex_2: str | None
+    extra_color_hex_3: str | None
+    extra_color_hex_4: str | None
     status: str
     notes: str | None
     registered: datetime

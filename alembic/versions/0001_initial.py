@@ -8,7 +8,6 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision: str = "0001_initial"
 down_revision: Union[str, None] = None
@@ -20,17 +19,17 @@ def upgrade() -> None:
     # ── users ─────────────────────────────────────────────────────────────────
     op.create_table(
         "users",
-        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
+        sa.Column("id", sa.String(36), primary_key=True),
         sa.Column("email", sa.String(255), nullable=False),
         sa.Column("hashed_password", sa.String(255), nullable=False),
         sa.Column("display_name", sa.String(100), nullable=False),
         sa.Column("maker_name", sa.String(100)),
         sa.Column("avatar_url", sa.String(500)),
-        sa.Column("role", sa.Enum("admin", "editor", "viewer", name="userrole"), nullable=False, server_default="editor"),
-        sa.Column("is_active", sa.Boolean, nullable=False, server_default="true"),
-        sa.Column("is_verified", sa.Boolean, nullable=False, server_default="false"),
+        sa.Column("role", sa.String(20), nullable=False, server_default="editor"),
+        sa.Column("is_active", sa.Boolean, nullable=False, server_default="1"),
+        sa.Column("is_verified", sa.Boolean, nullable=False, server_default="0"),
         sa.Column("totp_secret", sa.String(32)),
-        sa.Column("totp_enabled", sa.Boolean, nullable=False, server_default="false"),
+        sa.Column("totp_enabled", sa.Boolean, nullable=False, server_default="0"),
         sa.Column("preferred_weight_unit", sa.String(10), server_default="g"),
         sa.Column("preferred_temp_unit", sa.String(1), server_default="C"),
         sa.Column("preferred_currency", sa.String(3), server_default="USD"),
@@ -44,8 +43,8 @@ def upgrade() -> None:
     # ── api_keys ──────────────────────────────────────────────────────────────
     op.create_table(
         "api_keys",
-        sa.Column("id", postgresql.UUID(as_uuid=False), primary_key=True),
-        sa.Column("user_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("user_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("name", sa.String(100), nullable=False),
         sa.Column("key_prefix", sa.String(12), nullable=False),
         sa.Column("hashed_key", sa.String(255), nullable=False),
@@ -86,8 +85,8 @@ def upgrade() -> None:
         sa.Column("max_print_speed", sa.Integer),
         sa.Column("drying_temp", sa.Integer),
         sa.Column("drying_duration", sa.Integer),
-        sa.Column("is_community", sa.Boolean, server_default="false"),
-        sa.Column("is_verified", sa.Boolean, server_default="false"),
+        sa.Column("is_community", sa.Boolean, server_default="0"),
+        sa.Column("is_verified", sa.Boolean, server_default="0"),
         sa.Column("product_url", sa.String(500)),
         sa.Column("notes", sa.Text),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
@@ -100,17 +99,17 @@ def upgrade() -> None:
     op.create_table(
         "storage_locations",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("owner_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("owner_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("name", sa.String(100), nullable=False),
         sa.Column("description", sa.String(300)),
-        sa.Column("is_dry_box", sa.Boolean, server_default="false"),
+        sa.Column("is_dry_box", sa.Boolean, server_default="0"),
     )
 
     # ── spools ────────────────────────────────────────────────────────────────
     op.create_table(
         "spools",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("owner_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("owner_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("filament_id", sa.Integer, sa.ForeignKey("filament_profiles.id", ondelete="SET NULL")),
         sa.Column("brand_id", sa.Integer, sa.ForeignKey("brands.id", ondelete="SET NULL")),
         sa.Column("location_id", sa.Integer, sa.ForeignKey("storage_locations.id", ondelete="SET NULL")),
@@ -124,7 +123,7 @@ def upgrade() -> None:
         sa.Column("purchase_price", sa.Float),
         sa.Column("supplier", sa.String(200)),
         sa.Column("product_url", sa.String(500)),
-        sa.Column("status", sa.Enum("active", "empty", "archived", "drying", name="spoolstatus"), server_default="active"),
+        sa.Column("status", sa.String(20), server_default="active"),
         sa.Column("notes", sa.Text),
         sa.Column("registered", sa.DateTime(timezone=True), nullable=False),
         sa.Column("first_used", sa.DateTime(timezone=True)),
@@ -149,13 +148,13 @@ def upgrade() -> None:
     op.create_table(
         "printers",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("owner_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("owner_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("name", sa.String(100), nullable=False),
         sa.Column("model", sa.String(100)),
-        sa.Column("connection_type", sa.Enum("octoprint", "moonraker", "bambu", "manual", name="printerconnectiontype"), server_default="manual"),
+        sa.Column("connection_type", sa.String(20), server_default="manual"),
         sa.Column("api_url", sa.String(500)),
         sa.Column("api_key", sa.String(200)),
-        sa.Column("status", sa.Enum("idle", "printing", "paused", "error", "offline", name="printerstatus"), server_default="offline"),
+        sa.Column("status", sa.String(20), server_default="offline"),
         sa.Column("notes", sa.Text),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("last_seen_at", sa.DateTime(timezone=True)),
@@ -182,13 +181,13 @@ def upgrade() -> None:
     op.create_table(
         "print_jobs",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("user_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("user_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("printer_id", sa.Integer, sa.ForeignKey("printers.id", ondelete="SET NULL")),
         sa.Column("spool_id", sa.Integer, sa.ForeignKey("spools.id", ondelete="SET NULL")),
         sa.Column("file_name", sa.String(300)),
         sa.Column("filament_used_g", sa.Float, nullable=False),
         sa.Column("duration_seconds", sa.Integer),
-        sa.Column("outcome", sa.Enum("success", "failed", "cancelled", name="printjoboutcome"), server_default="success"),
+        sa.Column("outcome", sa.String(20), server_default="success"),
         sa.Column("notes", sa.Text),
         sa.Column("started_at", sa.DateTime(timezone=True)),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=False),
@@ -215,14 +214,14 @@ def upgrade() -> None:
     op.create_table(
         "alert_rules",
         sa.Column("id", sa.Integer, primary_key=True, autoincrement=True),
-        sa.Column("owner_id", postgresql.UUID(as_uuid=False), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("owner_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
         sa.Column("name", sa.String(100), nullable=False),
         sa.Column("low_threshold_pct", sa.Float, server_default="20.0"),
         sa.Column("critical_threshold_pct", sa.Float, server_default="10.0"),
         sa.Column("material_filter", sa.String(50)),
-        sa.Column("notify_discord", sa.Boolean, server_default="true"),
-        sa.Column("notify_email", sa.Boolean, server_default="false"),
-        sa.Column("is_active", sa.Boolean, server_default="true"),
+        sa.Column("notify_discord", sa.Boolean, server_default="1"),
+        sa.Column("notify_email", sa.Boolean, server_default="0"),
+        sa.Column("is_active", sa.Boolean, server_default="1"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
     )
 
@@ -241,6 +240,3 @@ def downgrade() -> None:
     op.drop_table("brands")
     op.drop_table("api_keys")
     op.drop_table("users")
-    # Drop enums
-    for enum in ["userrole", "spoolstatus", "printerstatus", "printerconnectiontype", "printjoboutcome"]:
-        op.execute(f"DROP TYPE IF EXISTS {enum}")

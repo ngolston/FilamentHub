@@ -50,7 +50,11 @@ async def list_spools(
     q = _spool_query(current_user.id)
 
     if status:
-        q = q.where(Spool.status == status)
+        statuses = [s.strip() for s in status.split(',') if s.strip()]
+        if len(statuses) == 1:
+            q = q.where(Spool.status == statuses[0])
+        elif statuses:
+            q = q.where(Spool.status.in_(statuses))
     if brand_id:
         q = q.where(Spool.brand_id == brand_id)
     if location_id:

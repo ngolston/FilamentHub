@@ -10,9 +10,12 @@ const LoginPage    = lazy(() => import('@/features/auth/LoginPage'))
 const RegisterPage = lazy(() => import('@/features/auth/RegisterPage'))
 const DashboardPage   = lazy(() => import('@/features/dashboard/DashboardPage'))
 const SpoolsPage      = lazy(() => import('@/features/spools/SpoolsPage'))
+const AddSpoolPage    = lazy(() => import('@/features/spools/AddSpoolPage'))
+const EditSpoolPage   = lazy(() => import('@/features/spools/EditSpoolPage'))
 const PrintersPage    = lazy(() => import('@/features/printers/PrintersPage'))
 const PrintJobsPage   = lazy(() => import('@/features/print-jobs/PrintJobsPage'))
 const FilamentsPage   = lazy(() => import('@/features/filaments/FilamentsPage'))
+const CommunityPage   = lazy(() => import('@/features/community/CommunityPage'))
 const DryingPage      = lazy(() => import('@/features/drying/DryingPage'))
 const AlertsPage      = lazy(() => import('@/features/alerts/AlertsPage'))
 const QrLabelsPage    = lazy(() => import('@/features/qr-labels/QrLabelsPage'))
@@ -56,9 +59,12 @@ export const router = createBrowserRouter([
         children: [
           { path: '/',            element: <DashboardPage /> },
           { path: '/spools',      element: <SpoolsPage /> },
+          { path: '/spools/new',       element: <AddSpoolPage /> },
+          { path: '/spools/:id/edit', element: <EditSpoolPage /> },
           { path: '/printers',    element: <PrintersPage /> },
           { path: '/print-jobs',  element: <PrintJobsPage /> },
           { path: '/filaments',   element: <FilamentsPage /> },
+          { path: '/community',   element: <CommunityPage /> },
           { path: '/drying',      element: <DryingPage /> },
           { path: '/alerts',      element: <AlertsPage /> },
           { path: '/qr-labels',   element: <QrLabelsPage /> },

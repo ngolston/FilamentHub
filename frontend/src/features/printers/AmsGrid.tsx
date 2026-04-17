@@ -155,8 +155,8 @@ function SpoolPickerModal({
   isPending: boolean
 }) {
   const { data } = useQuery({
-    queryKey: ['spools', { status: 'active', page_size: 100 }],
-    queryFn: () => spoolsApi.list({ status: 'active', page_size: 100 }),
+    queryKey: ['spools', { status: 'active,storage', page_size: 100 }],
+    queryFn: () => spoolsApi.list({ status: 'active,storage', page_size: 100 }),
   })
   const spools = data?.items ?? []
 

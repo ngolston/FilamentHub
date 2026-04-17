@@ -10,6 +10,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/ams':         'AMS Manager',
   '/print-jobs':  'Print Jobs',
   '/filaments':   'Filament Database',
+  '/community':   'Community Database',
   '/drying':      'Drying Sessions',
   '/qr-labels':  'QR Labels',
   '/alerts':      'Alerts',

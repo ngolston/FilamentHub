@@ -1,7 +1,8 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
-from pydantic import AnyHttpUrl, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,7 +22,11 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # ── Database ──────────────────────────────────────────────────────────────
-    DATABASE_URL: str = "postgresql+asyncpg://filamenthub:changeme@localhost:5432/filamenthub"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./data/filamenthub.db"
+
+    # ── Data / media storage ──────────────────────────────────────────────────
+    # Directory on disk where photos and other uploads are stored.
+    DATA_DIR: str = "./data"
 
     # ── CORS ──────────────────────────────────────────────────────────────────
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
@@ -37,13 +42,6 @@ class Settings(BaseSettings):
             return [origin.strip() for origin in v.split(",") if origin.strip()]
         return v
 
-    # ── Object Storage (MinIO / S3) ───────────────────────────────────────────
-    MINIO_ENDPOINT: str = "localhost:9000"
-    MINIO_ACCESS_KEY: str = "minioadmin"
-    MINIO_SECRET_KEY: str = "minioadmin"
-    MINIO_BUCKET: str = "filamenthub"
-    MINIO_SECURE: bool = False
-
     # ── Optional integrations ─────────────────────────────────────────────────
     DISCORD_WEBHOOK_URL: str | None = None
     SMTP_HOST: str | None = None
@@ -55,6 +53,14 @@ class Settings(BaseSettings):
     # ── Pagination ────────────────────────────────────────────────────────────
     DEFAULT_PAGE_SIZE: int = 50
     MAX_PAGE_SIZE: int = 200
+
+    @property
+    def data_path(self) -> Path:
+        return Path(self.DATA_DIR)
+
+    @property
+    def photos_path(self) -> Path:
+        return self.data_path / "photos"
 
     @property
     def is_production(self) -> bool:
