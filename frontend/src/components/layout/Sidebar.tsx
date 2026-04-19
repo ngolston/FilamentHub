@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   Package,
   Printer,
-  Layers,
   ClipboardList,
   Database,
   Globe,
@@ -14,7 +13,8 @@ import {
   Bell,
   Settings,
   LogOut,
-  Wind,
+  ShoppingCart,
+  BarChart3,
 } from 'lucide-react'
 
 interface NavItem {
@@ -27,12 +27,12 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: '/',             label: 'Dashboard',  icon: LayoutDashboard },
   { to: '/spools',       label: 'Spools',     icon: Package },
-  { to: '/printers',     label: 'Printers',   icon: Printer },
-  { to: '/ams',          label: 'AMS',        icon: Layers },
-  { to: '/print-jobs',   label: 'Print Jobs', icon: ClipboardList },
-  { to: '/filaments',    label: 'Filaments',  icon: Database },
-  { to: '/community',    label: 'Community',  icon: Globe    },
-  { to: '/drying',       label: 'Drying',     icon: Wind },
+  { to: '/printers',     label: 'Devices',           icon: Printer },
+  { to: '/print-jobs',   label: 'Print Jobs',        icon: ClipboardList },
+  { to: '/filaments',    label: 'Filament Profiles', icon: Database },
+  { to: '/community',    label: 'Community Filament Database', icon: Globe },
+  { to: '/analytics',    label: 'Analytics',    icon: BarChart3 },
+  { to: '/reorder',      label: 'Reorder List', icon: ShoppingCart },
   { to: '/qr-labels',   label: 'QR Labels',  icon: QrCode },
   { to: '/alerts',       label: 'Alerts',     icon: Bell },
   { to: '/settings',     label: 'Settings',   icon: Settings },

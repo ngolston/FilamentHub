@@ -2,6 +2,170 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Theme CSS variables ─────────────────────────────────────────────────────
+   All color tokens use space-separated RGB channels so that Tailwind's
+   opacity modifier syntax (e.g. bg-primary-600/20) works correctly.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Default / Dark ─────────────────────────────────────────────────────────── */
+:root,
+.theme-dark {
+  --surface:        15 17 23;      /* #0f1117 */
+  --surface-1:      21 24 32;      /* #151820 */
+  --surface-2:      28 32 48;      /* #1c2030 */
+  --surface-3:      35 40 64;      /* #232840 */
+  --surface-border: 42 48 80;      /* #2a3050 */
+
+  --primary-300:  165 180 252;     /* #a5b4fc */
+  --primary-400:  129 140 248;     /* #818cf8 */
+  --primary-500:  99  102 241;     /* #6366f1 */
+  --primary-600:  79  70  229;     /* #4f46e5 */
+  --primary-700:  67  56  202;     /* #4338ca */
+  --primary-900:  49  46  129;     /* #312e81 */
+  --primary-950:  30  27  75;      /* #1e1b4b */
+
+  --accent-300:   103 232 249;     /* #67e8f9 */
+  --accent-400:   34  211 238;     /* #22d3ee */
+  --accent-500:   6   182 212;     /* #06b6d4 */
+  --accent-600:   8   145 178;     /* #0891b2 */
+  --accent-700:   14  116 144;     /* #0e7490 */
+  --accent-900:   22  78  99;      /* #164e63 */
+
+  --success:      16  185 129;     /* #10b981 */
+}
+
+/* Soft Dark ──────────────────────────────────────────────────────────────── */
+.theme-soft-dark {
+  --surface:        17 24 39;      /* #111827 */
+  --surface-1:      31 41 55;      /* #1f2937 */
+  --surface-2:      55 65 81;      /* #374151 */
+  --surface-3:      75 85 99;      /* #4b5563 */
+  --surface-border: 55 65 81;      /* #374151 */
+
+  --primary-300:  199 210 254;     /* #c7d2fe */
+  --primary-400:  165 180 252;     /* #a5b4fc */
+  --primary-500:  129 140 248;     /* #818cf8 */
+  --primary-600:  99  102 241;     /* #6366f1 – user's Primary */
+  --primary-700:  79  70  229;     /* #4f46e5 */
+  --primary-900:  49  46  129;     /* #312e81 */
+  --primary-950:  30  27  75;      /* #1e1b4b */
+
+  --accent-300:   103 232 249;     /* #67e8f9 */
+  --accent-400:   34  211 238;     /* #22d3ee – user's Accent */
+  --accent-500:   6   182 212;     /* #06b6d4 */
+  --accent-600:   8   145 178;     /* #0891b2 */
+  --accent-700:   14  116 144;     /* #0e7490 */
+  --accent-900:   22  78  99;      /* #164e63 */
+
+  --success:      52  211 153;     /* #34d399 */
+}
+
+/* Muted Dark ─────────────────────────────────────────────────────────────── */
+.theme-muted-dark {
+  --surface:        11 15 20;      /* #0b0f14 */
+  --surface-1:      18 24 38;      /* #121826 */
+  --surface-2:      26 35 51;      /* #1a2333 */
+  --surface-3:      30 42 58;      /* #1e2a3a */
+  --surface-border: 31 41 55;      /* #1f2937 */
+
+  --primary-300:  224 231 255;     /* #e0e7ff */
+  --primary-400:  199 210 254;     /* #c7d2fe */
+  --primary-500:  165 180 252;     /* #a5b4fc */
+  --primary-600:  129 140 248;     /* #818cf8 – user's Primary */
+  --primary-700:  99  102 241;     /* #6366f1 */
+  --primary-900:  49  46  129;     /* #312e81 */
+  --primary-950:  30  27  75;      /* #1e1b4b */
+
+  --accent-300:   165 243 252;     /* #a5f3fc */
+  --accent-400:   103 232 249;     /* #67e8f9 – user's Accent */
+  --accent-500:   34  211 238;     /* #22d3ee */
+  --accent-600:   6   182 212;     /* #06b6d4 */
+  --accent-700:   8   145 178;     /* #0891b2 */
+  --accent-900:   21  94  117;     /* #155e75 */
+
+  --success:      110 231 183;     /* #6ee7b7 */
+}
+
+/* High-Contrast Dark ─────────────────────────────────────────────────────── */
+.theme-high-contrast {
+  --surface:        5   7   10;    /* #05070a */
+  --surface-1:      13 17 23;      /* #0d1117 */
+  --surface-2:      31 41 55;      /* #1f2937 */
+  --surface-3:      38 50 66;      /* #26323e */
+  --surface-border: 51 65 85;      /* #334155 */
+
+  --primary-300:  199 210 254;     /* #c7d2fe */
+  --primary-400:  165 180 252;     /* #a5b4fc */
+  --primary-500:  129 140 248;     /* #818cf8 */
+  --primary-600:  99  102 241;     /* #6366f1 – user's Primary */
+  --primary-700:  79  70  229;     /* #4f46e5 */
+  --primary-900:  49  46  129;     /* #312e81 */
+  --primary-950:  30  27  75;      /* #1e1b4b */
+
+  --accent-300:   103 232 249;     /* #67e8f9 */
+  --accent-400:   34  211 238;     /* #22d3ee */
+  --accent-500:   6   182 212;     /* #06b6d4 – user's Accent */
+  --accent-600:   8   145 178;     /* #0891b2 */
+  --accent-700:   14  116 144;     /* #0e7490 */
+  --accent-900:   22  78  99;      /* #164e63 */
+
+  --success:      16  185 129;     /* #10b981 */
+}
+
+/* Light ──────────────────────────────────────────────────────────────────── */
+.theme-light {
+  --surface:        255 255 255;   /* #ffffff */
+  --surface-1:      241 245 249;   /* #f1f5f9 */
+  --surface-2:      226 232 240;   /* #e2e8f0 */
+  --surface-3:      203 213 225;   /* #cbd5e1 */
+  --surface-border: 229 231 235;   /* #e5e7eb */
+
+  /* Primary: shifted so 600 = user's #4f46e5 and lower shades stay dark for text */
+  --primary-300:  79  70  229;     /* #4f46e5 – deep for text readability on light bg */
+  --primary-400:  67  56  202;     /* #4338ca */
+  --primary-500:  67  56  202;     /* #4338ca */
+  --primary-600:  79  70  229;     /* #4f46e5 – user's Primary (buttons) */
+  --primary-700:  55  48  163;     /* #3730a3 */
+  --primary-900:  49  46  129;     /* #312e81 */
+  --primary-950:  30  27  75;      /* #1e1b4b */
+
+  /* Accent: shifted darker for contrast on light bg */
+  --accent-300:   34  211 238;     /* #22d3ee */
+  --accent-400:   6   182 212;     /* #06b6d4 */
+  --accent-500:   8   145 178;     /* #0891b2 – user's Accent */
+  --accent-600:   3   105 161;     /* #0369a1 */
+  --accent-700:   12  74  110;     /* #0c4a6e */
+  --accent-900:   12  74  110;     /* #0c4a6e */
+
+  --success:      5   150 105;     /* #059669 – user's Success */
+
+  color-scheme: light;
+}
+
+/* Light theme text overrides ─────────────────────────────────────────────── */
+/* Text utilities below the Tailwind layers override them via specificity    */
+
+.theme-light .text-white     { color: #0f172a; }  /* Text Primary  */
+.theme-light .text-gray-100  { color: #1e293b; }
+.theme-light .text-gray-200  { color: #334155; }
+.theme-light .text-gray-300  { color: #334155; }  /* Text Secondary */
+.theme-light .text-gray-400  { color: #64748b; }  /* Text Muted     */
+.theme-light .text-gray-500  { color: #94a3b8; }
+.theme-light .text-gray-600  { color: #94a3b8; }
+.theme-light .text-gray-700  { color: #64748b; }
+
+/* Hover text overrides for light mode */
+.theme-light .hover\:text-white:hover     { color: #0f172a; }
+.theme-light .hover\:text-gray-200:hover  { color: #334155; }
+
+/* Preserve white text on colored button/badge backgrounds */
+.theme-light .bg-primary-600.text-white,
+.theme-light .bg-red-600.text-white,
+.theme-light .bg-red-500.text-white,
+.theme-light .bg-accent-600.text-white { color: #ffffff; }
+
+/* ── Base styles ─────────────────────────────────────────────────────────── */
+
 @layer base {
   html {
     @apply bg-surface text-white;

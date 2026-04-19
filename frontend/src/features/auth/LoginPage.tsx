@@ -1,13 +1,15 @@
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { useQuery } from '@tanstack/react-query'
 import { Flame } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { getErrorMessage } from '@/api/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { useState } from 'react'
+import { systemApi } from '@/api/system'
 
 const schema = z.object({
   email: z.string().email('Invalid email'),
@@ -19,6 +21,13 @@ export default function LoginPage() {
   const { login, isLoading } = useAuth()
   const navigate = useNavigate()
   const [serverError, setServerError] = useState<string | null>(null)
+
+  const { data: publicConfig } = useQuery({
+    queryKey: ['system', 'public-config'],
+    queryFn: systemApi.getPublicConfig,
+    staleTime: Infinity,   // rarely changes; don't refetch on every visit
+  })
+  const allowRegistration = publicConfig?.allow_registration ?? true
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -57,14 +66,24 @@ export default function LoginPage() {
             error={errors.email?.message}
             {...register('email')}
           />
-          <Input
-            label="Password"
-            type="password"
-            autoComplete="current-password"
-            placeholder="••••••••"
-            error={errors.password?.message}
-            {...register('password')}
-          />
+          <div className="space-y-1">
+            <Input
+              label="Password"
+              type="password"
+              autoComplete="current-password"
+              placeholder="••••••••"
+              error={errors.password?.message}
+              {...register('password')}
+            />
+            <div className="flex justify-end">
+              <Link
+                to="/forgot-password"
+                className="text-xs text-gray-500 hover:text-primary-400 transition-colors"
+              >
+                Forgot password?
+              </Link>
+            </div>
+          </div>
 
           {serverError && (
             <p className="rounded-lg bg-red-900/40 border border-red-700/50 px-3 py-2 text-sm text-red-300">
@@ -77,12 +96,14 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-gray-500">
-          No account?{' '}
-          <Link to="/register" className="font-medium text-primary-400 hover:text-primary-300">
-            Create one
-          </Link>
-        </p>
+        {allowRegistration && (
+          <p className="mt-6 text-center text-sm text-gray-500">
+            No account?{' '}
+            <Link to="/register" className="font-medium text-primary-400 hover:text-primary-300">
+              Create one
+            </Link>
+          </p>
+        )}
       </div>
     </div>
   )

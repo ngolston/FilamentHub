@@ -125,7 +125,7 @@ async def import_community_filament(
         spool_weight=body.spool_weight,
         used_weight=0.0,
         purchase_price=body.purchase_price,
-        status=SpoolStatus.active,
+        status=SpoolStatus.storage,
     )
     db.add(spool)
     await db.flush()

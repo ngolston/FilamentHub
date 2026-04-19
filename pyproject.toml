@@ -20,6 +20,7 @@ dependencies = [
     "pyotp>=2.9.0",
     "qrcode[pil]>=7.4.2",
     "Pillow>=10.3.0",
+    "apscheduler>=3.10.0",
 ]
 
 [project.optional-dependencies]

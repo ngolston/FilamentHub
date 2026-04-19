@@ -21,14 +21,19 @@ from fastapi.staticfiles import StaticFiles
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.v1.endpoints.brands import brands_router, filaments_router
 from app.api.v1.endpoints.data import router as data_router
-from app.api.v1.endpoints.drying import alerts_router, drying_router
+from app.api.v1.endpoints.alerts import router as alerts_router
+from app.api.v1.endpoints.drying import drying_router
 from app.api.v1.endpoints.print_jobs import analytics_router, jobs_router
 from app.api.v1.endpoints.printers import router as printers_router
 from app.api.v1.endpoints.spools import router as spools_router
 from app.api.v1.endpoints.users import router as users_router
 from app.api.v1.endpoints.locations import router as locations_router
 from app.api.v1.endpoints.community import router as community_router
+from app.api.v1.endpoints.webhooks import router as webhooks_router
+from app.api.v1.endpoints.system import router as system_router
+from app.api.v1.endpoints.integrations import router as integrations_router
 from app.core.config import get_settings
+from app.core.scheduler import create_scheduler
 from app.db.session import engine
 from app.models import models  # noqa: F401 — registers all models with Base
 
@@ -39,8 +44,12 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     # Startup — ensure data directories exist
     settings.photos_path.mkdir(parents=True, exist_ok=True)
+    # Start background alert scheduler
+    scheduler = create_scheduler()
+    scheduler.start()
     yield
-    # Shutdown — dispose the connection pool cleanly
+    # Shutdown
+    scheduler.shutdown(wait=False)
     await engine.dispose()
 
 
@@ -101,6 +110,9 @@ app.include_router(alerts_router,    prefix=V1)
 app.include_router(data_router,      prefix=V1)
 app.include_router(locations_router, prefix=V1)
 app.include_router(community_router, prefix=V1)
+app.include_router(webhooks_router,  prefix=V1)
+app.include_router(system_router,      prefix=V1)
+app.include_router(integrations_router, prefix=V1)
 
 # ── Health & info ─────────────────────────────────────────────────────────────
 

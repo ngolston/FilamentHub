@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# FilamentHub — self-host via Docker Hub (no source code needed)
+#
+# Usage:
+#   curl -O https://raw.githubusercontent.com/YOUR_GITHUB/filamenthub/main/docker-compose.hub.yml
+#   curl -O https://raw.githubusercontent.com/YOUR_GITHUB/filamenthub/main/.env.example
+#   cp .env.example .env
+#   # Edit .env — set SECRET_KEY and FRONTEND_URL
+#   docker compose -f docker-compose.hub.yml up -d
+#
+# Update to the latest version:
+#   docker compose -f docker-compose.hub.yml pull
+#   docker compose -f docker-compose.hub.yml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  api:
+    image: YOUR_DOCKERHUB_USERNAME/filamenthub-api:latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:  sqlite+aiosqlite:////app/data/filamenthub.db
+      DATA_DIR:      /app/data
+      ENVIRONMENT:   production
+      SECRET_KEY:    "${SECRET_KEY:?Set SECRET_KEY in .env - run: openssl rand -hex 32}"
+      FRONTEND_URL:  ${FRONTEND_URL:-http://localhost}
+      CORS_ORIGINS:  '["${FRONTEND_URL:-http://localhost}","http://localhost"]'
+      SMTP_HOST:     ${SMTP_HOST:-}
+      SMTP_PORT:     ${SMTP_PORT:-587}
+      SMTP_USER:     ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAILS_FROM:   ${EMAILS_FROM:-noreply@filamenthub.local}
+    volumes:
+      - filamenthub_data:/app/data
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  web:
+    image: YOUR_DOCKERHUB_USERNAME/filamenthub-web:latest
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${PORT:-80}:80"
+    # nginx config is baked into the image.
+    # Override by mounting your own: - ./my-nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  filamenthub_data:
+    name: filamenthub_data

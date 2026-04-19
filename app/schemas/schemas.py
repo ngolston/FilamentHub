@@ -3,7 +3,7 @@ Pydantic v2 schemas — request bodies, response models, and shared types.
 """
 
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, HttpUrl, field_validator
 
@@ -48,6 +48,30 @@ class TotpVerifyRequest(BaseModel):
     code: Annotated[str, Field(min_length=6, max_length=6)]
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: Annotated[str, Field(min_length=8, max_length=100)]
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: Annotated[str, Field(min_length=8, max_length=100)]
+
+
+class SessionResponse(OrmBase):
+    id: int
+    device_name: str | None
+    ip_address: str | None
+    created_at: datetime
+    last_used_at: datetime
+    expires_at: datetime
+    is_current: bool = False  # injected — True if this matches the requesting token
+
+
 class UserResponse(OrmBase):
     id: str
     email: str
@@ -56,11 +80,13 @@ class UserResponse(OrmBase):
     avatar_url: str | None
     role: str
     is_active: bool
+    is_verified: bool
     totp_enabled: bool
     preferred_weight_unit: str
     preferred_temp_unit: str
     preferred_currency: str
     timezone: str
+    discord_webhook_url: str | None
     created_at: datetime
     last_login_at: datetime | None
 
@@ -73,11 +99,7 @@ class UserUpdate(BaseModel):
     preferred_currency: str | None = None
     timezone: str | None = None
     avatar_url: str | None = None
-
-
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password: Annotated[str, Field(min_length=8, max_length=100)]
+    discord_webhook_url: str | None = None
 
 
 # ── Brands ────────────────────────────────────────────────────────────────────
@@ -162,6 +184,9 @@ class FilamentProfileResponse(OrmBase):
     notes: str | None
     created_at: datetime
     updated_at: datetime
+    # Computed from user's spool inventory (injected at query time)
+    spool_count: int = 0
+    remaining_weight_g: float = 0.0
 
 
 # ── Community import ─────────────────────────────────────────────────────────
@@ -217,7 +242,7 @@ class SpoolCreate(BaseModel):
     extra_color_hex_2: str | None = None
     extra_color_hex_3: str | None = None
     extra_color_hex_4: str | None = None
-    status: str = "active"
+    status: str = "storage"
     notes: str | None = None
 
 
@@ -239,6 +264,12 @@ class SpoolUpdate(BaseModel):
     extra_color_hex_4: str | None = None
     status: str | None = None
     notes: str | None = None
+
+
+class BulkSpoolAction(BaseModel):
+    ids: Annotated[list[int], Field(min_length=1, max_length=500)]
+    action: Literal["archive", "activate", "set_storage", "delete", "move_location"]
+    location_id: int | None = None  # required when action == "move_location"
 
 
 class SpoolResponse(OrmBase):
@@ -291,6 +322,7 @@ class WeightLogResponse(OrmBase):
 class PrinterCreate(BaseModel):
     name: Annotated[str, Field(min_length=1, max_length=100)]
     model: str | None = None
+    serial_number: str | None = None
     connection_type: str = "manual"
     api_url: str | None = None
     api_key: str | None = None
@@ -300,6 +332,7 @@ class PrinterCreate(BaseModel):
 class PrinterUpdate(BaseModel):
     name: str | None = None
     model: str | None = None
+    serial_number: str | None = None
     connection_type: str | None = None
     api_url: str | None = None
     api_key: str | None = None
@@ -335,12 +368,15 @@ class PrinterResponse(OrmBase):
     id: int
     name: str
     model: str | None
+    serial_number: str | None = None
     connection_type: str
     status: str
     notes: str | None
     created_at: datetime
     last_seen_at: datetime | None
     ams_units: list[AmsUnitSchema] = []
+    direct_spool_id: int | None = None
+    direct_spool: AmsSpoolSummary | None = None
 
 
 # ── Print jobs ────────────────────────────────────────────────────────────────
@@ -392,6 +428,53 @@ class DryingSessionResponse(OrmBase):
     notes: str | None
 
 
+# ── Alerts ───────────────────────────────────────────────────────────────────
+
+class AlertRuleCreate(BaseModel):
+    name: Annotated[str, Field(min_length=1, max_length=100)]
+    low_threshold_pct: Annotated[float, Field(ge=1, le=99)] = 20.0
+    critical_threshold_pct: Annotated[float, Field(ge=1, le=99)] = 10.0
+    material_filter: str | None = None  # None = all materials
+    notify_discord: bool = True
+    notify_email: bool = False
+
+
+class AlertRuleUpdate(BaseModel):
+    name: str | None = None
+    low_threshold_pct: Annotated[float, Field(ge=1, le=99)] | None = None
+    critical_threshold_pct: Annotated[float, Field(ge=1, le=99)] | None = None
+    material_filter: str | None = None
+    notify_discord: bool | None = None
+    notify_email: bool | None = None
+    is_active: bool | None = None
+
+
+class AlertRuleResponse(OrmBase):
+    id: int
+    name: str
+    low_threshold_pct: float
+    critical_threshold_pct: float
+    material_filter: str | None
+    notify_discord: bool
+    notify_email: bool
+    is_active: bool
+    created_at: datetime
+    triggered_count: int = 0  # injected at query time
+
+
+class TriggeredAlert(BaseModel):
+    spool_id: int
+    spool_name: str
+    material: str | None
+    brand_name: str | None
+    color_hex: str | None
+    remaining_g: float
+    remaining_pct: float
+    severity: Literal["low", "critical"]
+    rule_id: int
+    rule_name: str
+
+
 # ── Pagination ────────────────────────────────────────────────────────────────
 
 class Pagination(BaseModel):
@@ -426,3 +509,85 @@ class SpoolForecast(BaseModel):
     days_remaining: float | None
     estimated_runout: datetime | None
     severity: str  # ok | warning | critical
+
+
+# ── Extended analytics ───────────────────────────────────────────────────────
+
+class DailyUsagePoint(BaseModel):
+    date: str          # YYYY-MM-DD
+    grams: float
+    cumulative: float
+
+
+class MaterialBreakdown(BaseModel):
+    material: str
+    total_grams: float
+    pct: float
+    avg_daily_g: float
+
+
+class MaterialAnalytics(BaseModel):
+    breakdown: list[MaterialBreakdown]
+    weekly: list[dict]   # [{week, PLA: x, PETG: y, …}]
+    materials: list[str]
+
+
+class PrinterStat(BaseModel):
+    printer_id: int | None
+    printer_name: str
+    total_grams: float
+    pct: float
+    top_materials: list[str]
+
+
+class PrinterAnalytics(BaseModel):
+    stats: list[PrinterStat]
+    daily: list[dict]   # [{date, Printer1: x, …}]
+
+
+class MonthlySpend(BaseModel):
+    month: str   # YYYY-MM
+    spend: float
+
+
+class MaterialCost(BaseModel):
+    material: str
+    cost_per_kg: float
+    total_spent: float
+
+
+class CostAnalytics(BaseModel):
+    total_invested: float
+    blended_cost_per_kg: float
+    this_month_spend: float
+    projected_monthly: float
+    monthly_history: list[MonthlySpend]
+    cost_by_material: list[MaterialCost]
+
+
+# ── Webhooks ──────────────────────────────────────────────────────────────────
+
+class WebhookCreate(BaseModel):
+    name: Annotated[str, Field(min_length=1, max_length=100)]
+    url: Annotated[str, Field(min_length=1, max_length=500)]
+    events: str = ""            # comma-separated event slugs; empty = all events
+    secret: str | None = None
+
+
+class WebhookUpdate(BaseModel):
+    name: str | None = None
+    url: str | None = None
+    events: str | None = None
+    secret: str | None = None
+    is_active: bool | None = None
+
+
+class WebhookResponse(OrmBase):
+    id: int
+    name: str
+    url: str
+    events: str
+    is_active: bool
+    created_at: datetime
+    last_triggered_at: datetime | None
+    last_status_code: int | None

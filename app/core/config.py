@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # Directory on disk where photos and other uploads are stored.
     DATA_DIR: str = "./data"
 
+    # ── Frontend ──────────────────────────────────────────────────────────────
+    # Base URL of the frontend app — used to build password-reset / verify links
+    FRONTEND_URL: str = "http://localhost:5173"
+
     # ── CORS ──────────────────────────────────────────────────────────────────
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://localhost:5173"]
 

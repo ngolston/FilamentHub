@@ -925,7 +925,7 @@ export default function AddSpoolPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <Input
-                label="Spool tare weight (g)"
+                label="Empty spool weight (g)"
                 type="number"
                 step="1"
                 placeholder="~250"

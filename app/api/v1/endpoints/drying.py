@@ -1,18 +1,17 @@
-"""Drying session and alert rule endpoints."""
+"""Drying session endpoints."""
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import get_current_user, require_editor
 from app.db.session import get_db
-from app.models.models import AlertRule, DryingSession, Spool, User
+from app.models.models import DryingSession, Spool, User
 from app.schemas.schemas import DryingSessionCreate, DryingSessionResponse
 
 drying_router = APIRouter(prefix="/drying-sessions", tags=["drying"])
-alerts_router = APIRouter(prefix="/alert-rules", tags=["alerts"])
 
 
 # ── Drying sessions ───────────────────────────────────────────────────────────
@@ -79,55 +78,3 @@ async def get_spool_drying_history(
     )
     return result.scalars().all()
 
-
-# ── Alert rules ───────────────────────────────────────────────────────────────
-
-@alerts_router.get("")
-async def list_alert_rules(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(
-        select(AlertRule).where(AlertRule.owner_id == current_user.id)
-    )
-    return result.scalars().all()
-
-
-@alerts_router.post("", status_code=status.HTTP_201_CREATED)
-async def create_alert_rule(
-    name: str,
-    low_threshold_pct: float = 20.0,
-    critical_threshold_pct: float = 10.0,
-    material_filter: str | None = None,
-    notify_discord: bool = True,
-    notify_email: bool = False,
-    current_user: User = Depends(require_editor),
-    db: AsyncSession = Depends(get_db),
-):
-    rule = AlertRule(
-        owner_id=current_user.id,
-        name=name,
-        low_threshold_pct=low_threshold_pct,
-        critical_threshold_pct=critical_threshold_pct,
-        material_filter=material_filter,
-        notify_discord=notify_discord,
-        notify_email=notify_email,
-    )
-    db.add(rule)
-    await db.flush()
-    return rule
-
-
-@alerts_router.delete("/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_alert_rule(
-    rule_id: int,
-    current_user: User = Depends(require_editor),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(
-        select(AlertRule).where(AlertRule.id == rule_id, AlertRule.owner_id == current_user.id)
-    )
-    rule = result.scalar_one_or_none()
-    if not rule:
-        raise HTTPException(status_code=404, detail="Alert rule not found")
-    await db.delete(rule)

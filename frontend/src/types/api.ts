@@ -7,6 +7,18 @@ export type PrinterConnectionType = 'octoprint' | 'moonraker' | 'bambu' | 'manua
 export type PrintJobOutcome = 'success' | 'failed' | 'cancelled'
 export type AlertSeverity = 'info' | 'warning' | 'critical'
 
+// ─── Sessions ─────────────────────────────────────────────────────────────────
+
+export interface SessionResponse {
+  id: number
+  device_name: string | null
+  ip_address: string | null
+  created_at: string
+  last_used_at: string
+  expires_at: string
+  is_current: boolean
+}
+
 // ─── Pagination ───────────────────────────────────────────────────────────────
 
 export interface PaginatedResponse<T> {
@@ -63,11 +75,13 @@ export interface UserResponse {
   avatar_url: string | null
   role: UserRole
   is_active: boolean
+  is_verified: boolean
   totp_enabled: boolean
   preferred_weight_unit: string
   preferred_temp_unit: string
   preferred_currency: string
   timezone: string
+  discord_webhook_url: string | null
   created_at: string
   updated_at: string
   last_login_at: string | null
@@ -81,6 +95,7 @@ export interface UserUpdate {
   preferred_temp_unit?: string
   preferred_currency?: string
   timezone?: string
+  discord_webhook_url?: string | null
 }
 
 export interface ApiKeyInfo {
@@ -142,6 +157,8 @@ export interface FilamentProfileResponse {
   notes: string | null
   created_at: string
   updated_at: string
+  spool_count: number
+  remaining_weight_g: number
 }
 
 export interface FilamentProfileCreate {
@@ -268,12 +285,25 @@ export interface PrinterResponse {
   id: number
   name: string
   model: string | null
+  serial_number: string | null
   connection_type: PrinterConnectionType
   status: PrinterStatus
   notes: string | null
   created_at: string
   last_seen_at: string | null
   ams_units: AmsUnit[]
+  direct_spool_id: number | null
+  direct_spool: AmsSpoolSummary | null
+}
+
+export interface PrinterCreate {
+  name: string
+  model?: string
+  serial_number?: string
+  connection_type?: PrinterConnectionType
+  api_url?: string
+  api_key?: string
+  notes?: string
 }
 
 export interface PrinterCreate {
@@ -330,7 +360,7 @@ export interface PrintJobResponse {
 export interface PrintJobCreate {
   printer_id?: number
   spool_id?: number
-  file_name: string
+  file_name?: string
   filament_used_g: number
   duration_seconds?: number
   outcome?: PrintJobOutcome
@@ -389,7 +419,7 @@ export interface SpoolForecast {
 
 // ─── Alert Rules ──────────────────────────────────────────────────────────────
 
-export interface AlertRule {
+export interface AlertRuleResponse {
   id: number
   name: string
   low_threshold_pct: number
@@ -399,21 +429,74 @@ export interface AlertRule {
   notify_email: boolean
   is_active: boolean
   created_at: string
+  triggered_count: number
 }
 
 export interface AlertRuleCreate {
   name: string
   low_threshold_pct: number
   critical_threshold_pct: number
-  material_filter?: string
+  material_filter?: string | null
   notify_discord?: boolean
   notify_email?: boolean
+}
+
+export interface AlertRuleUpdate {
+  name?: string
+  low_threshold_pct?: number
+  critical_threshold_pct?: number
+  material_filter?: string | null
+  notify_discord?: boolean
+  notify_email?: boolean
+  is_active?: boolean
+}
+
+export interface TriggeredAlert {
+  spool_id: number
+  spool_name: string
+  material: string | null
+  brand_name: string | null
+  color_hex: string | null
+  remaining_g: number
+  remaining_pct: number
+  severity: 'low' | 'critical'
+  rule_id: number
+  rule_name: string
+}
+
+// ─── Webhooks ─────────────────────────────────────────────────────────────────
+
+export interface WebhookResponse {
+  id: number
+  name: string
+  url: string
+  events: string
+  is_active: boolean
+  created_at: string
+  last_triggered_at: string | null
+  last_status_code: number | null
+}
+
+export interface WebhookCreate {
+  name: string
+  url: string
+  events?: string
+  secret?: string
+}
+
+export interface WebhookUpdate {
+  name?: string
+  url?: string
+  events?: string
+  secret?: string
+  is_active?: boolean
 }
 
 // ─── Data Import/Export ───────────────────────────────────────────────────────
 
 export interface ImportResult {
-  spools_created: number
+  imported: number
+  skipped: number
   brands_created: number
-  filaments_created: number
+  profiles_created: number
 }

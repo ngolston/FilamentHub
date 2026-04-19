@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pencil, Trash2, MoreHorizontal, Printer, Gauge, QrCode, Copy } from 'lucide-react'
+import { Pencil, Trash2, MoreHorizontal, Printer, Gauge, QrCode, Copy, Minus } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
 import { formatWeight } from '@/utils/format'
 import { hexToColorName } from '@/utils/colors'
@@ -143,8 +143,17 @@ export function SpoolGrid({
                 </div>
               </div>
 
-              {/* Action buttons (edit / delete / more) — no view button */}
-              <div className="flex items-center justify-end gap-0.5 -mb-1" onClick={(e) => e.stopPropagation()}>
+              {/* Action buttons */}
+              <div className="flex items-center gap-0.5 -mb-1" onClick={(e) => e.stopPropagation()}>
+                {isEditor && (
+                  <button
+                    title="Log usage"
+                    onClick={() => onLogUsage(spool)}
+                    className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-gray-400 hover:bg-surface-2 hover:text-white transition-colors mr-auto"
+                  >
+                    <Minus className="h-3 w-3" /> Log use
+                  </button>
+                )}
                 {isEditor && <CardBtn title="Edit"   onClick={() => onEdit(spool)}><Pencil className="h-3.5 w-3.5" /></CardBtn>}
                 {isEditor && <CardBtn title="Delete" danger onClick={() => onDelete(spool)}><Trash2 className="h-3.5 w-3.5" /></CardBtn>}
                 {isEditor && <CardBtn title="More"   onClick={(e) => openMenu(e, spool.id)}><MoreHorizontal className="h-3.5 w-3.5" /></CardBtn>}

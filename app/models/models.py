@@ -88,7 +88,7 @@ class User(Base):
     avatar_url: Mapped[str | None] = mapped_column(String(500))
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.editor)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=True)   # True = email confirmed
 
     # 2FA
     totp_secret: Mapped[str | None] = mapped_column(String(32))
@@ -100,6 +100,17 @@ class User(Base):
     preferred_currency: Mapped[str] = mapped_column(String(3), default="USD")
     timezone: Mapped[str] = mapped_column(String(50), default="UTC")
 
+    # Integrations
+    discord_webhook_url: Mapped[str | None] = mapped_column(String(500))
+    bambu_config: Mapped[str | None] = mapped_column(Text)   # JSON: {access_token, refresh_token, username}
+    ha_config: Mapped[str | None] = mapped_column(Text)      # JSON: {url, token}
+
+    # Notification preferences (serialised JSON blob; parsed in the API layer)
+    notification_prefs: Mapped[str | None] = mapped_column(Text)
+
+    # UI / appearance preferences (serialised JSON blob)
+    ui_prefs: Mapped[str | None] = mapped_column(Text)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -109,6 +120,8 @@ class User(Base):
     spools: Mapped[list["Spool"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     printers: Mapped[list["Printer"]] = relationship(back_populates="owner", cascade="all, delete-orphan")
     print_jobs: Mapped[list["PrintJob"]] = relationship(back_populates="user")
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
+    password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 
 
 class ApiKey(Base):
@@ -248,7 +261,7 @@ class Spool(Base):
     extra_color_hex_4: Mapped[str | None] = mapped_column(String(7))
 
     # Status
-    status: Mapped[SpoolStatus] = mapped_column(Enum(SpoolStatus), default=SpoolStatus.active)
+    status: Mapped[SpoolStatus] = mapped_column(Enum(SpoolStatus), default=SpoolStatus.storage)
     notes: Mapped[str | None] = mapped_column(Text)
 
     # Timestamps (Spoolman-compatible)
@@ -298,16 +311,22 @@ class Printer(Base):
     connection_type: Mapped[PrinterConnectionType] = mapped_column(
         Enum(PrinterConnectionType), default=PrinterConnectionType.manual
     )
-    api_url: Mapped[str | None] = mapped_column(String(500))   # OctoPrint / Moonraker host
-    api_key: Mapped[str | None] = mapped_column(String(200))   # encrypted in prod
+    serial_number: Mapped[str | None] = mapped_column(String(100))  # Bambu printer serial
+    api_url: Mapped[str | None] = mapped_column(String(500))        # OctoPrint / Moonraker / Bambu IP
+    api_key: Mapped[str | None] = mapped_column(String(200))        # API key or Bambu access code
     status: Mapped[PrinterStatus] = mapped_column(Enum(PrinterStatus), default=PrinterStatus.offline)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    direct_spool_id: Mapped[int | None] = mapped_column(
+        ForeignKey("spools.id", ondelete="SET NULL"), nullable=True
+    )
+
     owner: Mapped["User"] = relationship(back_populates="printers")
     print_jobs: Mapped[list["PrintJob"]] = relationship(back_populates="printer")
     ams_units: Mapped[list["AmsUnit"]] = relationship(back_populates="printer", cascade="all, delete-orphan")
+    direct_spool: Mapped["Spool | None"] = relationship(foreign_keys=[direct_spool_id])
 
 
 class AmsUnit(Base):
@@ -405,3 +424,107 @@ class AlertRule(Base):
     notify_email: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+    owner: Mapped["User"] = relationship("User", foreign_keys=[owner_id])
+
+
+# ── Auth tokens ───────────────────────────────────────────────────────────────
+
+class RefreshToken(Base):
+    """Persistent refresh token — enables session listing and individual revocation."""
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    device_name: Mapped[str | None] = mapped_column(String(200))   # e.g. "Chrome on macOS"
+    ip_address: Mapped[str | None] = mapped_column(String(45))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    last_used_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    user: Mapped["User"] = relationship(back_populates="refresh_tokens")
+
+    __table_args__ = (Index("ix_refresh_tokens_user_id", "user_id"),)
+
+
+class PasswordResetToken(Base):
+    """Single-use token sent via email for password resets."""
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    user: Mapped["User"] = relationship(back_populates="password_reset_tokens")
+
+
+# ── Webhooks ──────────────────────────────────────────────────────────────────
+
+class Webhook(Base):
+    """User-defined outbound webhook — FilamentHub POSTs a JSON payload when events fire."""
+    __tablename__ = "webhooks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+    # comma-separated event slugs, e.g. "spool.low,spool.critical"  (empty string = all)
+    events: Mapped[str] = mapped_column(String(300), default="")
+    secret: Mapped[str | None] = mapped_column(String(200))   # HMAC-SHA256 signing secret
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+    last_triggered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_status_code: Mapped[int | None] = mapped_column(Integer)   # HTTP response from last delivery
+
+    owner: Mapped["User"] = relationship("User", foreign_keys=[owner_id])
+
+    __table_args__ = (Index("ix_webhooks_owner_id", "owner_id"),)
+
+
+# ── System configuration ──────────────────────────────────────────────────────
+
+class SystemConfig(Base):
+    """Single-row table holding server-wide configuration (SMTP, etc.).
+
+    Always use id=1. Read via get_system_config(); write via update_system_config().
+    Falls back to environment variables when a field is NULL.
+    """
+    __tablename__ = "system_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    smtp_host: Mapped[str | None] = mapped_column(String(255))
+    smtp_port: Mapped[int | None] = mapped_column(Integer)
+    smtp_user: Mapped[str | None] = mapped_column(String(255))
+    smtp_password: Mapped[str | None] = mapped_column(String(255))
+    smtp_from: Mapped[str | None] = mapped_column(String(255))
+    smtp_tls: Mapped[bool] = mapped_column(Boolean, default=True)
+    allow_registration: Mapped[bool] = mapped_column(Boolean, default=True, server_default="1")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc, onupdate=now_utc)
+
+
+# ── Alert notification deduplication ─────────────────────────────────────────
+
+class AlertFired(Base):
+    """Tracks the last time a (rule, spool) pair fired a notification.
+
+    Prevents repeat notifications every scheduler tick for the same breach.
+    A new notification is sent when:
+      - The pair has never been recorded, or
+      - Severity escalated (low → critical), or
+      - cooldown_hours have elapsed since last_fired_at.
+    """
+    __tablename__ = "alert_fired"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    rule_id: Mapped[int] = mapped_column(ForeignKey("alert_rules.id", ondelete="CASCADE"), nullable=False)
+    spool_id: Mapped[int] = mapped_column(ForeignKey("spools.id", ondelete="CASCADE"), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)  # "low" | "critical"
+    fired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+    __table_args__ = (
+        Index("ix_alert_fired_rule_spool", "rule_id", "spool_id", unique=True),
+    )

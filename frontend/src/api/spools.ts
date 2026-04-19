@@ -25,6 +25,12 @@ export const spoolsApi = {
   delete: (id: number) =>
     api.delete(`/spools/${id}`),
 
+  bulkAction: (body: {
+    ids: number[]
+    action: 'archive' | 'activate' | 'set_storage' | 'delete' | 'move_location'
+    location_id?: number | null
+  }) => api.post('/spools/bulk', body),
+
   uploadPhoto: (id: number, file: File) => {
     const form = new FormData()
     form.append('file', file)

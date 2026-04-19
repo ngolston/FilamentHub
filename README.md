@@ -1,237 +1,337 @@
-# FilamentHub API
+# FilamentHub
 
-> FastAPI + PostgreSQL backend for FilamentHub — 3D printer filament inventory management.  
-> Spoolman-compatible. Self-hosted via Docker Compose.
+**3D printer filament inventory management — self-hosted, open source.**
+
+Track your spool collection, log print jobs, get runout forecasts, print QR labels, and see full usage analytics. Runs entirely on your own hardware with a single Docker command.
+
+![License](https://img.shields.io/badge/license-MIT-blue)
+![Docker](https://img.shields.io/badge/docker-hub-blue?logo=docker)
 
 ---
 
-## Quick start
+## Self-host in 3 minutes
+
+### Prerequisites
+- Docker Engine 24+ and Docker Compose v2
+- A machine on your LAN (home server, NAS, Raspberry Pi 4+, VPS)
+
+### 1. Create your config
 
 ```bash
-# 1. Clone and configure
+# Download the compose file and example env
+curl -O https://raw.githubusercontent.com/YOUR_GITHUB/filamenthub/main/docker-compose.hub.yml
+curl -O https://raw.githubusercontent.com/YOUR_GITHUB/filamenthub/main/.env.example
+
 cp .env.example .env
-# Edit .env — at minimum change SECRET_KEY and POSTGRES_PASSWORD
-
-# 2. Generate a secure secret key
-openssl rand -hex 32
-
-# 3. Start everything
-docker compose up -d
-
-# 4. Check it's running
-curl http://localhost:8000/health
-# → {"status": "ok", "version": "0.1.0"}
-
-# 5. Open the API docs
-open http://localhost:8000/docs
 ```
 
-That's it. The API is live at **http://localhost:8000**.
+Open `.env` and set **two things** at minimum:
+
+```ini
+# Generate a secure key:  openssl rand -hex 32
+SECRET_KEY=paste-your-key-here
+
+# The URL your browser uses to reach FilamentHub
+# LAN example:  http://192.168.1.50
+# Domain:       https://filamenthub.yourdomain.com
+FRONTEND_URL=http://YOUR-SERVER-IP
+```
+
+### 2. Start
+
+```bash
+docker compose -f docker-compose.hub.yml up -d
+```
+
+That's it. Open **http://YOUR-SERVER-IP** in your browser and create your first account.
+
+### 3. Update
+
+```bash
+docker compose -f docker-compose.hub.yml pull
+docker compose -f docker-compose.hub.yml up -d
+```
 
 ---
 
-## Services
+## All `.env` options
 
-| Service | Port | Description |
-|---------|------|-------------|
-| `api` | 8000 | FastAPI application |
-| `db` | 5432 | PostgreSQL 16 |
-| `minio` | 9000 / 9001 | Object storage (spool photos) |
-| `nginx` | 80 / 443 | Reverse proxy (production profile only) |
+| Variable | Default | Description |
+|---|---|---|
+| `SECRET_KEY` | *(required)* | JWT signing key — `openssl rand -hex 32` |
+| `FRONTEND_URL` | `http://localhost` | Public URL of your instance (no trailing slash) |
+| `PORT` | `80` | Host port to expose |
+| `SMTP_HOST` | — | SMTP server for password-reset emails |
+| `SMTP_PORT` | `587` | SMTP port |
+| `SMTP_USER` | — | SMTP username |
+| `SMTP_PASSWORD` | — | SMTP password |
+| `EMAILS_FROM` | `noreply@filamenthub.local` | From address for emails |
+
+**Email is optional.** If SMTP is not configured, password-reset links are logged to the container console instead.
 
 ---
 
-## API overview
+## Backup & restore
 
-All endpoints live under `/api/v1`. Interactive docs at `/docs`.
+All data (SQLite database + spool photos) lives in a Docker named volume: `filamenthub_data`.
 
-### Authentication
+**Backup:**
 ```bash
-# Register
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"you@example.com","password":"yourpassword","display_name":"Jamie"}'
-
-# Login → get tokens
-curl -X POST http://localhost:8000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"you@example.com","password":"yourpassword"}'
-
-# Use the access_token in subsequent requests
-export TOKEN="eyJ..."
+docker run --rm \
+  -v filamenthub_data:/data \
+  -v $(pwd):/out \
+  busybox tar czf /out/filamenthub-backup-$(date +%Y%m%d).tar.gz /data
 ```
 
-### Spools
+**Restore:**
 ```bash
-# List all spools
-curl http://localhost:8000/api/v1/spools \
-  -H "Authorization: Bearer $TOKEN"
+# Stop the stack first
+docker compose -f docker-compose.hub.yml down
 
-# Add a spool
-curl -X POST http://localhost:8000/api/v1/spools \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"initial_weight":1000,"used_weight":0,"status":"active"}'
+docker run --rm \
+  -v filamenthub_data:/data \
+  -v $(pwd):/out \
+  busybox tar xzf /out/filamenthub-backup-YYYYMMDD.tar.gz -C /
 
-# Log a weight measurement (scale reading)
-curl -X POST http://localhost:8000/api/v1/spools/1/weight-logs \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"measured_weight":850,"spool_weight_tare":200}'
+docker compose -f docker-compose.hub.yml up -d
 ```
 
-### Print jobs
-```bash
-# Log a print job (auto-deducts filament from spool)
-curl -X POST http://localhost:8000/api/v1/print-jobs \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"spool_id":1,"filament_used_g":47,"file_name":"benchy.gcode","outcome":"success"}'
+---
+
+## Running on a NAS
+
+### Synology (DSM 7)
+
+1. Install **Container Manager** from Package Center
+2. Open Container Manager → **Project** → **Create**
+3. Set project name: `filamenthub`
+4. Upload `docker-compose.hub.yml` and `.env`
+5. Click **Build**
+
+### Unraid
+
+1. Install the **Docker Compose Manager** community app
+2. Create a new compose stack, paste in `docker-compose.hub.yml`
+3. Add your `.env` variables in the UI
+4. Start the stack
+
+### QNAP (Container Station 3)
+
+1. Open Container Station → **Applications** → **Create**
+2. Switch to **Upload** and provide `docker-compose.hub.yml`
+3. Set environment variables from `.env`
+4. Click **Validate** then **Create**
+
+### Raspberry Pi / ARM servers
+
+The Docker images are built for both `linux/amd64` and `linux/arm64` — no changes needed.
+
+---
+
+## Reverse proxy & HTTPS
+
+For production use with a real domain, put FilamentHub behind a reverse proxy that handles TLS.
+
+### Caddy (simplest — auto HTTPS)
+
+```caddyfile
+filamenthub.yourdomain.com {
+    reverse_proxy localhost:80
+}
 ```
 
-### Analytics
-```bash
-# 30-day usage summary
-curl "http://localhost:8000/api/v1/analytics/summary?days=30" \
-  -H "Authorization: Bearer $TOKEN"
+### Traefik
 
-# Run-out forecast for all active spools
-curl http://localhost:8000/api/v1/analytics/forecast \
-  -H "Authorization: Bearer $TOKEN"
+```yaml
+# In docker-compose.hub.yml, add to the web service:
+labels:
+  - "traefik.enable=true"
+  - "traefik.http.routers.filamenthub.rule=Host(`filamenthub.yourdomain.com`)"
+  - "traefik.http.routers.filamenthub.entrypoints=websecure"
+  - "traefik.http.routers.filamenthub.tls.certresolver=letsencrypt"
 ```
 
-### Import from Spoolman
-```bash
-# Upload a Spoolman JSON backup — brands, profiles, and spools are created automatically
-curl -X POST http://localhost:8000/api/v1/data/import/spoolman \
-  -H "Authorization: Bearer $TOKEN" \
-  -F "file=@spoolman_backup.json"
-```
+### nginx Proxy Manager
 
-### Export
-```bash
-# CSV
-curl http://localhost:8000/api/v1/data/export/csv \
-  -H "Authorization: Bearer $TOKEN" \
-  -o filaments.csv
+Set the **Proxy Host** to `http://YOUR-SERVER-IP:80` and enable **Force SSL** + **Let's Encrypt**.
 
-# JSON (Spoolman-compatible)
-curl http://localhost:8000/api/v1/data/export/json \
-  -H "Authorization: Bearer $TOKEN" \
-  -o filaments.json
-```
+---
 
-### API keys (for integrations)
-```bash
-# Generate a key — shown once, store it securely
-curl -X POST "http://localhost:8000/api/v1/users/me/api-keys?name=OctoPrint&scopes=read" \
-  -H "Authorization: Bearer $TOKEN"
+## Features
 
-# Use the key directly (no login required)
-curl http://localhost:8000/api/v1/spools \
-  -H "Authorization: Bearer fh_abc123..."
-```
+| | |
+|---|---|
+| **Spool inventory** | Track brand, material, color, weight, location, lot number |
+| **Print job logging** | Log filament used per job, auto-deduct from spool |
+| **Analytics** | Daily/weekly/monthly charts, by-material, by-printer, cost tracking |
+| **Run-out forecast** | Days remaining per spool based on actual usage rate |
+| **QR labels** | 7 label templates, print-ready at physical size |
+| **Reorder list** | Low-stock spools with supplier links and suggested quantities |
+| **Alerts** | Low-stock notifications, SMTP or Discord webhook |
+| **Community DB** | Browse shared filament profiles |
+| **Import** | Spoolman JSON export → FilamentHub in one click |
+| **Export** | CSV or JSON export of your inventory |
+| **2FA** | TOTP two-factor authentication |
+| **API keys** | Machine-to-machine access for OctoPrint/Moonraker integrations |
+| **Multi-user** | Admin / editor / viewer roles |
 
 ---
 
 ## Development
 
+### Prerequisites
+- Python 3.12+
+- Node.js 22+
+
+### Backend
+
 ```bash
 # Install dependencies
 pip install -e ".[dev]"
 
-# Run locally (needs a postgres instance)
+# Start the API (SQLite, hot-reload)
 uvicorn app.main:app --reload
 
-# Run the test suite (uses SQLite in-memory — no postgres needed)
+# Run tests
 pytest tests/ -v
 
-# Generate a new migration after model changes
-alembic revision --autogenerate -m "add column x to spools"
-
-# Apply migrations
+# Create a migration after changing models
+alembic revision --autogenerate -m "description"
 alembic upgrade head
-
-# Roll back one migration
-alembic downgrade -1
 ```
 
----
-
-## Project structure
-
-```
-filamenthub/
-├── app/
-│   ├── main.py                  # FastAPI app, middleware, router registration
-│   ├── core/
-│   │   ├── config.py            # Pydantic settings (reads .env)
-│   │   └── security.py          # JWT, bcrypt, TOTP, API key generation
-│   ├── db/
-│   │   └── session.py           # Async SQLAlchemy engine + get_db dependency
-│   ├── models/
-│   │   └── models.py            # All ORM models (User, Spool, Printer, PrintJob…)
-│   ├── schemas/
-│   │   └── schemas.py           # Pydantic v2 request/response schemas
-│   ├── services/
-│   │   ├── storage.py           # MinIO / S3 photo upload
-│   │   └── import_export.py     # Spoolman JSON import, CSV/JSON export
-│   └── api/v1/
-│       ├── deps.py              # Auth dependencies (JWT + API key)
-│       └── endpoints/
-│           ├── auth.py          # Register, login, refresh, 2FA
-│           ├── users.py         # Profile update, API key CRUD
-│           ├── spools.py        # Spool CRUD, weight logs, photo upload
-│           ├── brands.py        # Brand + filament profile CRUD
-│           ├── printers.py      # Printer + AMS unit/slot management
-│           ├── print_jobs.py    # Job logging + analytics
-│           ├── drying.py        # Drying sessions + alert rules
-│           └── data.py          # Import / export
-├── alembic/
-│   ├── env.py                   # Async migration environment
-│   └── versions/
-│       └── 0001_initial.py      # Full initial schema migration
-├── tests/
-│   └── test_api.py              # Integration tests (SQLite in-memory)
-├── nginx/
-│   └── nginx.conf               # Production reverse proxy
-├── docker-compose.yml
-├── Dockerfile
-├── pyproject.toml
-├── alembic.ini
-└── .env.example
-```
-
----
-
-## Spoolman compatibility
-
-FilamentHub's data model intentionally mirrors [Spoolman](https://github.com/Donkie/Spoolman):
-
-| Spoolman | FilamentHub |
-|----------|-------------|
-| `Vendor` | `Brand` |
-| `Filament` | `FilamentProfile` |
-| `Spool` | `Spool` |
-| `spool.used_weight` | `spool.used_weight` |
-| `spool.registered` | `spool.registered` |
-| `spool.lot_nr` | `spool.lot_nr` |
-| `spool.comment` | `spool.notes` |
-
-Migrate from Spoolman: `POST /api/v1/data/import/spoolman` with your Spoolman JSON export.
-
----
-
-## Production deployment
+### Frontend
 
 ```bash
-# Generate TLS certs (or use your own)
-mkdir nginx/certs
-openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-  -keyout nginx/certs/key.pem -out nginx/certs/cert.pem
-
-# Start with nginx reverse proxy
-docker compose --profile production up -d
+cd frontend
+npm install
+npm run dev          # Vite dev server on :5173, proxies /api → localhost:8000
+npm run build        # Production build → dist/
 ```
 
-For real deployments, use Let's Encrypt with certbot and point your domain at the server.
+### Full stack (dev)
+
+```bash
+# Starts API + frontend dev server (hot-reload on both)
+docker compose --profile dev up
+```
+
+---
+
+## Publishing to Docker Hub
+
+### One-time setup
+
+1. **Create a Docker Hub account** at [hub.docker.com](https://hub.docker.com)
+
+2. **Create two repositories** on Docker Hub:
+   - `YOUR_USERNAME/filamenthub-api`
+   - `YOUR_USERNAME/filamenthub-web`
+
+3. **Create a Docker Hub access token:**
+   Docker Hub → Account Settings → Security → **New Access Token**
+   Permissions: **Read, Write, Delete**
+
+4. **Add secrets to GitHub:**
+   Your repo → Settings → Secrets → Actions → **New repository secret**
+   - `DOCKERHUB_USERNAME` — your Docker Hub username
+   - `DOCKERHUB_TOKEN` — the access token from step 3
+
+### Trigger a build
+
+The GitHub Actions workflow (`.github/workflows/docker-publish.yml`) runs automatically:
+
+| Event | Tags pushed |
+|---|---|
+| Push to `main` | `:latest` |
+| Push tag `v1.2.3` | `:1.2.3`, `:1.2`, `:1`, `:latest` |
+| Pull request | Build only (no push) |
+
+**To release a new version:**
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+Watch the build at **GitHub → Actions**.
+
+### Manual push (without CI)
+
+```bash
+# Log in
+docker login
+
+# Build and push the API image
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --tag YOUR_USERNAME/filamenthub-api:latest \
+  --push \
+  .
+
+# Build and push the Web image (frontend + nginx)
+docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --tag YOUR_USERNAME/filamenthub-web:latest \
+  --push \
+  -f frontend/Dockerfile.prod \
+  ./frontend
+```
+
+Then update `docker-compose.hub.yml` to replace `YOUR_DOCKERHUB_USERNAME` with your real username before sharing it.
+
+---
+
+## Architecture
+
+```
+Browser
+  │
+  ▼
+┌─────────────────────────────┐
+│   web container             │
+│   nginx:stable-alpine       │
+│                             │
+│   /            → React SPA  │  (built into image at docker build time)
+│   /api/*       → api:8000   │
+└─────────────────────────────┘
+  │  internal network
+  ▼
+┌─────────────────────────────┐
+│   api container             │
+│   python:3.12-slim          │
+│                             │
+│   FastAPI + Uvicorn         │
+│   SQLite (named volume)     │
+│   Photos (named volume)     │
+└─────────────────────────────┘
+  │
+  ▼
+┌─────────────────────────────┐
+│  filamenthub_data volume    │
+│  /app/data/                 │
+│    filamenthub.db           │
+│    photos/                  │
+└─────────────────────────────┘
+```
+
+The API is never exposed directly to the network — all traffic goes through the nginx container.
+
+---
+
+## Spoolman migration
+
+FilamentHub can import a Spoolman JSON backup:
+
+```bash
+curl -X POST http://YOUR-SERVER-IP/api/v1/data/import/spoolman \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -F "file=@spoolman_backup.json"
+```
+
+Brands, filament profiles, and spools are created automatically.
+
+---
+
+## License
+
+MIT — do whatever you want with it.

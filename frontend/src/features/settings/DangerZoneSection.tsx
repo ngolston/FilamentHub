@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { AlertTriangle } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
+import { usersApi } from '@/api/users'
+import { getErrorMessage } from '@/api/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { SettingsCard } from './SettingsCard'
@@ -61,6 +63,7 @@ function DangerRow({ action }: { action: DangerAction }) {
   const [value,   setValue]   = useState('')
   const [loading, setLoading] = useState(false)
   const [done,    setDone]    = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
 
   const canConfirm = action.confirmMatch
     ? value === action.confirmMatch
@@ -68,24 +71,30 @@ function DangerRow({ action }: { action: DangerAction }) {
 
   async function execute() {
     setLoading(true)
-    // Stub — production would call the relevant API endpoint
-    await new Promise((r) => setTimeout(r, 800))
-    setLoading(false)
-
-    if (action.id === 'reset_settings') {
-      // Clear all fh_ localStorage keys
-      Object.keys(localStorage)
-        .filter((k) => k.startsWith('fh_'))
-        .forEach((k) => localStorage.removeItem(k))
-      setDone(true)
-    } else if (action.id === 'delete_account') {
-      logout()
-    } else {
-      setDone(true)
+    setError(null)
+    try {
+      if (action.id === 'reset_settings') {
+        Object.keys(localStorage)
+          .filter((k) => k.startsWith('fh_'))
+          .forEach((k) => localStorage.removeItem(k))
+        setDone(true)
+      } else if (action.id === 'clear_inventory') {
+        await usersApi.clearInventory()
+        setDone(true)
+      } else if (action.id === 'clear_history') {
+        await usersApi.clearHistory()
+        setDone(true)
+      } else if (action.id === 'delete_account') {
+        await usersApi.deleteAccount(value)
+        logout()
+      }
+      setOpen(false)
+      setValue('')
+    } catch (err) {
+      setError(getErrorMessage(err))
+    } finally {
+      setLoading(false)
     }
-
-    setOpen(false)
-    setValue('')
   }
 
   return (
@@ -112,8 +121,9 @@ function DangerRow({ action }: { action: DangerAction }) {
               value={value}
               onChange={(e) => setValue(e.target.value)}
             />
+            {error && <p className="text-xs text-red-400">{error}</p>}
             <div className="flex gap-2">
-              <Button variant="secondary" size="sm" onClick={() => { setOpen(false); setValue('') }}>
+              <Button variant="secondary" size="sm" onClick={() => { setOpen(false); setValue(''); setError(null) }}>
                 Cancel
               </Button>
               <Button

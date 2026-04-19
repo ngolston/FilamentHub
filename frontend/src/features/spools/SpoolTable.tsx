@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronUp, ChevronDown, ChevronsUpDown, Pencil, Trash2, MoreHorizontal, Printer, Gauge, QrCode, Copy } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, Pencil, Trash2, MoreHorizontal, Printer, Gauge, QrCode, Copy, Minus } from 'lucide-react'
 import type { SpoolResponse } from '@/types/api'
 
 export type SortKey = 'name' | 'material' | 'status' | 'fill_pct' | 'remaining' | 'last_used'
@@ -152,7 +152,16 @@ export function SpoolTable({
 
                   {/* Inline actions — only show on hover */}
                   <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {isEditor && (
+                        <button
+                          title="Log usage"
+                          onClick={() => onLogUsage(spool)}
+                          className="flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-gray-400 hover:bg-surface-3 hover:text-white transition-colors"
+                        >
+                          <Minus className="h-3 w-3" /> Log use
+                        </button>
+                      )}
                       {isEditor && <ActionBtn title="Edit"   onClick={() => onEdit(spool)}><Pencil className="h-3.5 w-3.5" /></ActionBtn>}
                       {isEditor && <ActionBtn title="Delete" danger onClick={() => onDelete(spool)}><Trash2 className="h-3.5 w-3.5" /></ActionBtn>}
                       {isEditor && (

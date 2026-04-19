@@ -8,6 +8,20 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <title>FilamentHub</title>
+    <!-- Apply stored theme immediately to avoid flash of wrong theme -->
+    <script>
+      (function () {
+        var valid = ['theme-dark','theme-soft-dark','theme-muted-dark','theme-high-contrast','theme-light'];
+        try {
+          var raw = localStorage.getItem('fh_theme');
+          var parsed = raw ? JSON.parse(raw) : null;
+          var theme = valid.includes(parsed) ? parsed : 'theme-dark';
+        } catch (e) {
+          var theme = 'theme-dark';
+        }
+        document.documentElement.classList.add(theme);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

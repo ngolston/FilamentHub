@@ -1,13 +1,19 @@
 import { api } from './client'
-import type { AlertRule, AlertRuleCreate } from '@/types/api'
+import type { AlertRuleResponse, AlertRuleCreate, AlertRuleUpdate, TriggeredAlert } from '@/types/api'
 
 export const alertsApi = {
-  list: () =>
-    api.get<AlertRule[]>('/alert-rules').then((r) => r.data),
+  listRules: () =>
+    api.get<AlertRuleResponse[]>('/alert-rules').then((r) => r.data),
 
-  create: (data: AlertRuleCreate) =>
-    api.post<AlertRule>('/alert-rules', data).then((r) => r.data),
+  getTriggered: () =>
+    api.get<TriggeredAlert[]>('/alert-rules/triggered').then((r) => r.data),
 
-  delete: (id: number) =>
+  createRule: (data: AlertRuleCreate) =>
+    api.post<AlertRuleResponse>('/alert-rules', data).then((r) => r.data),
+
+  updateRule: (id: number, data: AlertRuleUpdate) =>
+    api.patch<AlertRuleResponse>(`/alert-rules/${id}`, data).then((r) => r.data),
+
+  deleteRule: (id: number) =>
     api.delete(`/alert-rules/${id}`),
 }

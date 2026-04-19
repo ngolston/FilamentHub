@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.v1.deps import get_current_user, require_editor
 from app.db.session import get_db
-from app.models.models import Brand, FilamentProfile, User
+from app.models.models import Brand, FilamentProfile, Spool, User
 from app.schemas.schemas import (
     BrandCreate,
     BrandResponse,
@@ -106,7 +106,7 @@ async def list_filaments(
     community: bool | None = None,
     search: str | None = None,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     q = (
         select(FilamentProfile)
@@ -130,9 +130,41 @@ async def list_filaments(
 
     total = (await db.execute(select(func.count()).select_from(q.subquery()))).scalar_one()
     result = await db.execute(q.offset((page - 1) * page_size).limit(page_size))
+    profiles = result.scalars().all()
+
+    # Compute per-profile spool stats for the current user
+    if profiles:
+        profile_ids = [p.id for p in profiles]
+        stats_q = (
+            select(
+                Spool.filament_id,
+                func.count(Spool.id).label("spool_count"),
+                func.sum(Spool.initial_weight - Spool.used_weight)
+                .label("remaining_weight_g"),
+            )
+            .where(Spool.owner_id == current_user.id)
+            .where(Spool.filament_id.in_(profile_ids))
+            .where(Spool.status != "archived")
+            .group_by(Spool.filament_id)
+        )
+        stats_result = await db.execute(stats_q)
+        stats_map: dict[int, tuple[int, float]] = {
+            row.filament_id: (row.spool_count, row.remaining_weight_g or 0.0)
+            for row in stats_result
+        }
+    else:
+        stats_map = {}
+
+    items = [
+        FilamentProfileResponse.model_validate(p).model_copy(update={
+            "spool_count": stats_map.get(p.id, (0, 0.0))[0],
+            "remaining_weight_g": stats_map.get(p.id, (0, 0.0))[1],
+        })
+        for p in profiles
+    ]
 
     return PaginatedResponse(
-        items=result.scalars().all(),
+        items=items,
         total=total,
         page=page,
         page_size=page_size,

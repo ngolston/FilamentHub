@@ -6,8 +6,11 @@ import { FullPageSpinner } from '@/components/ui/Spinner'
 // Lazy-loaded pages
 import { lazy, Suspense } from 'react'
 
-const LoginPage    = lazy(() => import('@/features/auth/LoginPage'))
-const RegisterPage = lazy(() => import('@/features/auth/RegisterPage'))
+const LoginPage            = lazy(() => import('@/features/auth/LoginPage'))
+const RegisterPage         = lazy(() => import('@/features/auth/RegisterPage'))
+const ForgotPasswordPage   = lazy(() => import('@/features/auth/ForgotPasswordPage'))
+const ResetPasswordPage    = lazy(() => import('@/features/auth/ResetPasswordPage'))
+const VerifyEmailPage      = lazy(() => import('@/features/auth/VerifyEmailPage'))
 const DashboardPage   = lazy(() => import('@/features/dashboard/DashboardPage'))
 const SpoolsPage      = lazy(() => import('@/features/spools/SpoolsPage'))
 const AddSpoolPage    = lazy(() => import('@/features/spools/AddSpoolPage'))
@@ -16,10 +19,11 @@ const PrintersPage    = lazy(() => import('@/features/printers/PrintersPage'))
 const PrintJobsPage   = lazy(() => import('@/features/print-jobs/PrintJobsPage'))
 const FilamentsPage   = lazy(() => import('@/features/filaments/FilamentsPage'))
 const CommunityPage   = lazy(() => import('@/features/community/CommunityPage'))
-const DryingPage      = lazy(() => import('@/features/drying/DryingPage'))
 const AlertsPage      = lazy(() => import('@/features/alerts/AlertsPage'))
 const QrLabelsPage    = lazy(() => import('@/features/qr-labels/QrLabelsPage'))
 const SettingsPage    = lazy(() => import('@/features/settings/SettingsPage'))
+const ReorderPage     = lazy(() => import('@/features/reorder/ReorderPage'))
+const AnalyticsPage   = lazy(() => import('@/features/analytics/AnalyticsPage'))
 
 function RequireAuth() {
   const { user, isInitialized } = useAuthStore()
@@ -47,8 +51,11 @@ export const router = createBrowserRouter([
   {
     element: <RequireGuest />,
     children: [
-      { path: '/login',    element: <LoginPage /> },
-      { path: '/register', element: <RegisterPage /> },
+      { path: '/login',            element: <LoginPage /> },
+      { path: '/register',         element: <RegisterPage /> },
+      { path: '/forgot-password',  element: <ForgotPasswordPage /> },
+      { path: '/reset-password',   element: <ResetPasswordPage /> },
+      { path: '/verify-email',     element: <VerifyEmailPage /> },
     ],
   },
   {
@@ -65,10 +72,11 @@ export const router = createBrowserRouter([
           { path: '/print-jobs',  element: <PrintJobsPage /> },
           { path: '/filaments',   element: <FilamentsPage /> },
           { path: '/community',   element: <CommunityPage /> },
-          { path: '/drying',      element: <DryingPage /> },
           { path: '/alerts',      element: <AlertsPage /> },
           { path: '/qr-labels',   element: <QrLabelsPage /> },
           { path: '/settings',    element: <SettingsPage /> },
+          { path: '/reorder',     element: <ReorderPage /> },
+          { path: '/analytics',   element: <AnalyticsPage /> },
         ],
       },
     ],

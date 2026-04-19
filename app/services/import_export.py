@@ -10,8 +10,7 @@ normalised Brand → FilamentProfile → Spool hierarchy.
 
 import csv
 import io
-import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -110,6 +109,117 @@ async def import_spoolman_json(data: dict | list, owner_id: str, db: AsyncSessio
         "skipped": skipped,
         "brands_created": len(created_brands),
         "profiles_created": len(created_profiles),
+    }
+
+
+def _opt_float(v: str | None) -> float | None:
+    """Parse an optional float from a CSV cell; return None if blank or invalid."""
+    try:
+        return float(v) if v and v.strip() else None
+    except ValueError:
+        return None
+
+
+def _opt_date(v: str | None) -> date | None:
+    try:
+        return date.fromisoformat(v.strip()) if v and v.strip() else None
+    except ValueError:
+        return None
+
+
+async def _get_or_create_brand(name: str, cache: dict[str, int], db: AsyncSession) -> int:
+    if name not in cache:
+        result = await db.execute(select(Brand).where(Brand.name == name))
+        brand = result.scalar_one_or_none() or Brand(name=name)
+        if brand.id is None:
+            db.add(brand)
+            await db.flush()
+        cache[name] = brand.id
+    return cache[name]
+
+
+async def _get_or_create_profile(
+    row: dict[str, str],
+    brand_id: int,
+    cache: dict[str, int],
+    db: AsyncSession,
+) -> int:
+    name     = (row.get("name") or "Imported Filament").strip()
+    material = (row.get("material") or "PLA").strip()
+    key      = f"{brand_id}:{name}:{material}"
+    if key not in cache:
+        result = await db.execute(
+            select(FilamentProfile).where(
+                FilamentProfile.brand_id == brand_id,
+                FilamentProfile.name == name,
+                FilamentProfile.material == material,
+            )
+        )
+        fp = result.scalar_one_or_none()
+        if not fp:
+            fp = FilamentProfile(
+                brand_id=brand_id,
+                name=name,
+                material=material,
+                color_name=row.get("color_name") or None,
+                color_hex=row.get("color_hex") or None,
+                diameter=_opt_float(row.get("diameter")) or 1.75,
+                print_temp_min=_opt_float(row.get("print_temp_min")),
+                print_temp_max=_opt_float(row.get("print_temp_max")),
+                bed_temp_min=_opt_float(row.get("bed_temp_min")),
+                bed_temp_max=_opt_float(row.get("bed_temp_max")),
+            )
+            db.add(fp)
+            await db.flush()
+        cache[key] = fp.id
+    return cache[key]
+
+
+async def import_spools_csv(content: str, owner_id: str, db: AsyncSession) -> dict:
+    """
+    Import spools from a FilamentHub CSV export.
+    Brands and filament profiles are de-duplicated by name.
+    """
+    reader = csv.DictReader(io.StringIO(content))
+    brand_cache: dict[str, int] = {}
+    profile_cache: dict[str, int] = {}
+    imported = skipped = 0
+
+    for row in reader:
+        try:
+            brand_name = (row.get("brand") or "").strip() or "Unknown"
+            brand_id   = await _get_or_create_brand(brand_name, brand_cache, db)
+            profile_id = await _get_or_create_profile(row, brand_id, profile_cache, db)
+
+            status_val = (row.get("status") or "storage").strip()
+            if status_val not in ("active", "storage", "archived"):
+                status_val = "storage"
+
+            spool = Spool(
+                owner_id=owner_id,
+                filament_id=profile_id,
+                brand_id=brand_id,
+                name=row.get("name") or None,
+                initial_weight=_opt_float(row.get("initial_weight_g")) or 1000.0,
+                used_weight=_opt_float(row.get("used_weight_g")) or 0.0,
+                status=status_val,
+                lot_nr=row.get("lot_nr") or None,
+                notes=row.get("notes") or None,
+                purchase_date=_opt_date(row.get("purchase_date")),
+                purchase_price=_opt_float(row.get("purchase_price")),
+                supplier=row.get("supplier") or None,
+            )
+            db.add(spool)
+            imported += 1
+        except Exception:  # noqa: BLE001 — skip malformed rows
+            skipped += 1
+
+    await db.flush()
+    return {
+        "imported": imported,
+        "skipped": skipped,
+        "brands_created": len(brand_cache),
+        "profiles_created": len(profile_cache),
     }
 
 

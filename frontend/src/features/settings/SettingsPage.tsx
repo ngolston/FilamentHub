@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Bell, Database, Flame, Key, LayoutGrid,
-  Palette, Settings2, ShieldCheck, Sliders, Trash2,
+  MapPin, Palette, Settings2, ShieldCheck, Sliders, Trash2,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { ProfileSection }      from './ProfileSection'
@@ -13,6 +13,7 @@ import { NotificationsSection } from './NotificationsSection'
 import { IntegrationsSection } from './IntegrationsSection'
 import { ApiWebhooksSection }  from './ApiWebhooksSection'
 import { DataBackupSection }   from './DataBackupSection'
+import { LocationsSection }    from './LocationsSection'
 import { DangerZoneSection }   from './DangerZoneSection'
 
 const SECTIONS = [
@@ -21,6 +22,7 @@ const SECTIONS = [
   { id: 'appearance',   label: 'Appearance',       icon: Palette,      component: AppearanceSection   },
   { id: 'units',        label: 'Units & Format',   icon: Sliders,      component: UnitsSection        },
   { id: 'security',     label: 'Security',         icon: ShieldCheck,  component: SecuritySection     },
+  { id: 'locations',    label: 'Locations',        icon: MapPin,       component: LocationsSection    },
   { id: 'notifications',label: 'Notifications',    icon: Bell,         component: NotificationsSection },
   { id: 'integrations', label: 'Integrations',     icon: LayoutGrid,   component: IntegrationsSection },
   { id: 'api',          label: 'API & Webhooks',   icon: Key,          component: ApiWebhooksSection  },

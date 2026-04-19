@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Search, Plus, Database, CheckCircle, Globe,
   Pencil, Trash2, ExternalLink, Thermometer, Wind,
+  Package, PackageX,
 } from 'lucide-react'
 import { filamentsApi } from '@/api/filaments'
 import { brandsApi } from '@/api/brands'
@@ -14,50 +15,53 @@ import { cn } from '@/utils/cn'
 import { useAuth } from '@/hooks/useAuth'
 import { FilamentFormModal } from './FilamentFormModal'
 import { BrandFormModal } from './BrandFormModal'
+import { SpoolFormModal } from '@/features/spools/SpoolFormModal'
 import type { FilamentProfileResponse, BrandResponse } from '@/types/api'
 
-type Tab = 'filaments' | 'brands'
+type Tab = 'profiles' | 'brands'
 
 const MATERIALS = ['All', 'PLA', 'PETG', 'ABS', 'ASA', 'TPU', 'Nylon', 'PC', 'HIPS', 'PLA-CF', 'PETG-CF', 'Other']
 
 export default function FilamentsPage() {
-  const [tab, setTab] = useState<Tab>('filaments')
+  const [tab, setTab] = useState<Tab>('profiles')
 
   return (
     <div className="p-5 lg:p-7 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">Filament Database</h2>
-          <p className="mt-0.5 text-sm text-gray-400">Community profiles and brand catalogue</p>
+          <h2 className="text-xl font-semibold text-white">Filament Profiles</h2>
+          <p className="mt-0.5 text-sm text-gray-400">
+            Reusable specs library — link profiles to spools so settings travel with the filament
+          </p>
         </div>
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 rounded-xl border border-surface-border bg-surface-1 p-1 w-fit">
-        {(['filaments', 'brands'] as Tab[]).map((t) => (
+        {([['profiles', 'Profiles'], ['brands', 'Brands']] as [Tab, string][]).map(([t, label]) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={cn(
-              'rounded-lg px-4 py-1.5 text-sm font-medium capitalize transition-colors',
+              'rounded-lg px-4 py-1.5 text-sm font-medium transition-colors',
               tab === t
                 ? 'bg-primary-600 text-white'
                 : 'text-gray-400 hover:text-white',
             )}
           >
-            {t}
+            {label}
           </button>
         ))}
       </div>
 
-      {tab === 'filaments' ? <FilamentsTab /> : <BrandsTab />}
+      {tab === 'profiles' ? <ProfilesTab /> : <BrandsTab />}
     </div>
   )
 }
 
-// ─── Filaments tab ────────────────────────────────────────────────────────────
+// ─── Profiles tab ─────────────────────────────────────────────────────────────
 
-function FilamentsTab() {
+function ProfilesTab() {
   const { isEditor } = useAuth()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
@@ -67,6 +71,7 @@ function FilamentsTab() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<FilamentProfileResponse | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<FilamentProfileResponse | null>(null)
+  const [addSpoolFor, setAddSpoolFor] = useState<FilamentProfileResponse | null>(null)
 
   const { data: brands = [] } = useQuery({
     queryKey: ['brands'],
@@ -106,7 +111,7 @@ function FilamentsTab() {
           <input
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-            placeholder="Search filaments…"
+            placeholder="Search profiles…"
             className="w-full rounded-lg border border-surface-border bg-surface-2 py-2 pl-9 pr-3 text-sm text-white placeholder:text-gray-500 focus:border-primary-500 focus:outline-none"
           />
         </div>
@@ -140,7 +145,7 @@ function FilamentsTab() {
         {isEditor && (
           <Button size="sm" className="ml-auto shrink-0 gap-1.5" onClick={() => setShowForm(true)}>
             <Plus className="h-4 w-4" />
-            Add filament
+            Add profile
           </Button>
         )}
       </div>
@@ -150,12 +155,18 @@ function FilamentsTab() {
       {isLoading ? (
         <div className="flex justify-center py-16"><Spinner className="h-8 w-8" /></div>
       ) : filaments.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
+        <div className="flex flex-col items-center gap-4 py-16 text-center">
           <Database className="h-12 w-12 text-gray-600" />
-          <p className="text-sm text-gray-400">No filament profiles found.</p>
+          <div>
+            <p className="text-sm font-medium text-gray-300">No filament profiles yet</p>
+            <p className="mt-1 text-xs text-gray-500 max-w-xs">
+              Profiles store print settings — temps, speeds, material — for a specific filament.
+              Link them to spools so every spool automatically inherits the right settings.
+            </p>
+          </div>
           {isEditor && (
             <Button size="sm" variant="secondary" onClick={() => setShowForm(true)}>
-              <Plus className="h-4 w-4" /> Add first profile
+              <Plus className="h-4 w-4 mr-1" /> Create first profile
             </Button>
           )}
         </div>
@@ -169,6 +180,7 @@ function FilamentsTab() {
                 canEdit={isEditor}
                 onEdit={() => setEditing(f)}
                 onDelete={() => setConfirmDelete(f)}
+                onAddSpool={() => setAddSpoolFor(f)}
               />
             ))}
           </div>
@@ -194,6 +206,16 @@ function FilamentsTab() {
         />
       )}
 
+      {addSpoolFor && (
+        <SpoolFormModal
+          prefillFilamentId={addSpoolFor.id}
+          onClose={() => {
+            setAddSpoolFor(null)
+            queryClient.invalidateQueries({ queryKey: ['filaments'] })
+          }}
+        />
+      )}
+
       {confirmDelete && (
         <DeleteConfirm
           name={`${confirmDelete.brand?.name ? confirmDelete.brand.name + ' ' : ''}${confirmDelete.name}`}
@@ -207,23 +229,25 @@ function FilamentsTab() {
 }
 
 function FilamentCard({
-  filament, canEdit, onEdit, onDelete,
+  filament, canEdit, onEdit, onDelete, onAddSpool,
 }: {
   filament: FilamentProfileResponse
   canEdit: boolean
   onEdit: () => void
   onDelete: () => void
+  onAddSpool: () => void
 }) {
   const hasPrintTemp = filament.print_temp_min || filament.print_temp_max
   const hasDryTemp = filament.drying_temp
+  const hasSpools = filament.spool_count > 0
 
   return (
-    <Card className="flex flex-col gap-3 hover:border-primary-700/50 transition-colors">
+    <Card className="flex flex-col gap-0 hover:border-primary-700/50 transition-colors">
       {/* Header row */}
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 min-w-0">
           <div
-            className="h-9 w-9 shrink-0 rounded-lg border border-black/20"
+            className="h-10 w-10 shrink-0 rounded-xl border border-black/20"
             style={{ backgroundColor: filament.color_hex ?? '#374151' }}
           />
           <div className="min-w-0">
@@ -231,23 +255,44 @@ function FilamentCard({
             <p className="truncate text-xs text-gray-500">
               {filament.brand?.name ?? 'No brand'} · {filament.material}
             </p>
+            {filament.color_name && (
+              <p className="truncate text-xs text-gray-600">{filament.color_name}</p>
+            )}
           </div>
         </div>
         {canEdit && (
           <div className="flex shrink-0 gap-1">
-            <button onClick={onEdit} className="rounded-md p-1.5 text-gray-500 hover:bg-surface-2 hover:text-gray-200 transition-colors">
+            <button onClick={onEdit} className="rounded-md p-1.5 text-gray-500 hover:bg-surface-2 hover:text-gray-200 transition-colors" title="Edit">
               <Pencil className="h-3.5 w-3.5" />
             </button>
-            <button onClick={onDelete} className="rounded-md p-1.5 text-gray-500 hover:bg-red-900/30 hover:text-red-400 transition-colors">
+            <button onClick={onDelete} className="rounded-md p-1.5 text-gray-500 hover:bg-red-900/30 hover:text-red-400 transition-colors" title="Delete">
               <Trash2 className="h-3.5 w-3.5" />
             </button>
           </div>
         )}
       </div>
 
-      {/* Badges */}
-      <div className="flex flex-wrap gap-1.5">
-        <Badge variant="primary">{filament.material}</Badge>
+      {/* Stock status + spool count */}
+      <div className="mt-3 flex items-center gap-2 flex-wrap">
+        {hasSpools ? (
+          <>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-900/40 border border-emerald-700/40 px-2 py-0.5 text-xs font-medium text-emerald-400">
+              <Package className="h-3 w-3" />
+              {filament.spool_count} spool{filament.spool_count !== 1 ? 's' : ''}
+            </span>
+            <span className="text-xs text-gray-500">
+              {filament.remaining_weight_g >= 1000
+                ? `${(filament.remaining_weight_g / 1000).toFixed(2)} kg`
+                : `${Math.round(filament.remaining_weight_g)} g`} left
+            </span>
+          </>
+        ) : (
+          <span className="inline-flex items-center gap-1 rounded-full bg-surface-3 border border-surface-border px-2 py-0.5 text-xs font-medium text-gray-500">
+            <PackageX className="h-3 w-3" />
+            Not in stock
+          </span>
+        )}
+
         {filament.diameter && (
           <Badge variant="default">{filament.diameter}mm</Badge>
         )}
@@ -265,7 +310,7 @@ function FilamentCard({
 
       {/* Temp info */}
       {(hasPrintTemp || hasDryTemp) && (
-        <div className="flex flex-col gap-1 text-xs text-gray-400">
+        <div className="mt-3 flex flex-col gap-1 text-xs text-gray-400">
           {hasPrintTemp && (
             <span className="flex items-center gap-1.5">
               <Thermometer className="h-3.5 w-3.5 text-orange-400" />
@@ -283,17 +328,31 @@ function FilamentCard({
         </div>
       )}
 
-      {/* Product link */}
-      {filament.product_url && (
-        <a
-          href={filament.product_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1 text-xs text-primary-400 hover:text-primary-300 transition-colors mt-auto"
-        >
-          <ExternalLink className="h-3 w-3" /> Product page
-        </a>
-      )}
+      {/* Footer actions */}
+      <div className="mt-3 pt-3 border-t border-surface-border flex items-center justify-between gap-2">
+        {filament.product_url ? (
+          <a
+            href={filament.product_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-primary-400 hover:text-primary-300 transition-colors"
+          >
+            <ExternalLink className="h-3 w-3" /> Product page
+          </a>
+        ) : (
+          <span />
+        )}
+
+        {canEdit && (
+          <button
+            onClick={onAddSpool}
+            className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium text-gray-400 hover:bg-surface-2 hover:text-white transition-colors border border-surface-border"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add spool
+          </button>
+        )}
+      </div>
     </Card>
   )
 }

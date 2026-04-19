@@ -1,8 +1,7 @@
-import { useMutation } from '@tanstack/react-query'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/auth'
 import { usersApi } from '@/api/users'
-import { useLocalSetting } from '@/hooks/useLocalSetting'
-import { Button } from '@/components/ui/Button'
 import { getErrorMessage } from '@/api/client'
 import { SettingsCard } from './SettingsCard'
 
@@ -12,8 +11,8 @@ type DiameterUnit = 'mm' | 'in'
 type DateFmt      = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD' | 'relative'
 type FirstDay     = 'monday' | 'sunday'
 
-const CURRENCIES  = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'SEK', 'NOK', 'DKK']
-const TIMEZONES   = [
+const CURRENCIES = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'JPY', 'CHF', 'SEK', 'NOK', 'DKK']
+const TIMEZONES  = [
   'UTC',
   'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
   'America/Toronto', 'America/Vancouver', 'America/Sao_Paulo',
@@ -23,10 +22,7 @@ const TIMEZONES   = [
 ]
 
 function PillGroup<T extends string>({
-  options,
-  value,
-  onChange,
-  label,
+  options, value, onChange, label,
 }: {
   options: { value: T; label: string }[]
   value: T
@@ -57,10 +53,7 @@ function PillGroup<T extends string>({
 }
 
 function SelectField({
-  label,
-  value,
-  onChange,
-  options,
+  label, value, onChange, options,
 }: {
   label: string
   value: string
@@ -84,27 +77,57 @@ function SelectField({
 export function UnitsSection() {
   const user    = useAuthStore((s) => s.user)
   const fetchMe = useAuthStore((s) => s.fetchMe)
+  const qc      = useQueryClient()
 
-  // Server-synced
-  const [weightUnit,  setWeightUnit]  = useLocalSetting<WeightUnit>('fh_weight_unit',   (user?.preferred_weight_unit as WeightUnit) ?? 'g')
-  const [tempUnit,    setTempUnit]    = useLocalSetting<TempUnit>  ('fh_temp_unit',     (user?.preferred_temp_unit   as TempUnit)   ?? 'C')
-  const [currency,    setCurrency]    = useLocalSetting            ('fh_currency',       user?.preferred_currency    ?? 'USD')
-  const [timezone,    setTimezone]    = useLocalSetting            ('fh_timezone',       user?.timezone              ?? 'UTC')
+  // Server-synced fields — seed from user object
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>((user?.preferred_weight_unit as WeightUnit) ?? 'g')
+  const [tempUnit,   setTempUnit]   = useState<TempUnit>((user?.preferred_temp_unit as TempUnit) ?? 'C')
+  const [currency,   setCurrency]   = useState(user?.preferred_currency ?? 'USD')
+  const [timezone,   setTimezone]   = useState(user?.timezone ?? 'UTC')
 
-  // Local-only
-  const [diamUnit,    setDiamUnit]    = useLocalSetting<DiameterUnit>('fh_diam_unit',   'mm')
-  const [dateFmt,     setDateFmt]     = useLocalSetting<DateFmt>     ('fh_date_fmt',    'MM/DD/YYYY')
-  const [firstDay,    setFirstDay]    = useLocalSetting<FirstDay>    ('fh_first_day',   'monday')
+  // Local-only display preferences (still stored in localStorage via ui-prefs if needed)
+  const [diamUnit,  setDiamUnit]  = useState<DiameterUnit>('mm')
+  const [dateFmt,   setDateFmt]   = useState<DateFmt>('MM/DD/YYYY')
+  const [firstDay,  setFirstDay]  = useState<FirstDay>('monday')
 
-  const mutation = useMutation({
-    mutationFn: () => usersApi.updateMe({
-      preferred_weight_unit: weightUnit,
-      preferred_temp_unit:   tempUnit,
-      preferred_currency:    currency,
-      timezone,
-    }),
-    onSuccess: () => fetchMe(),
+  // Re-seed if user object loads after mount
+  useEffect(() => {
+    if (user) {
+      setWeightUnit((user.preferred_weight_unit as WeightUnit) ?? 'g')
+      setTempUnit((user.preferred_temp_unit as TempUnit) ?? 'C')
+      setCurrency(user.preferred_currency ?? 'USD')
+      setTimezone(user.timezone ?? 'UTC')
+    }
+  }, [user?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveMutation = useMutation({
+    mutationFn: (data: { preferred_weight_unit: string; preferred_temp_unit: string; preferred_currency: string; timezone: string }) =>
+      usersApi.updateMe(data),
+    onSuccess: async () => {
+      await fetchMe()
+      qc.invalidateQueries({ queryKey: ['me'] })
+    },
   })
+
+  // Debounce saves so rapid pill clicks don't spam the API
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debouncedSave = useCallback((patch: { preferred_weight_unit?: string; preferred_temp_unit?: string; preferred_currency?: string; timezone?: string }) => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => {
+      saveMutation.mutate({
+        preferred_weight_unit: weightUnit,
+        preferred_temp_unit:   tempUnit,
+        preferred_currency:    currency,
+        timezone,
+        ...patch,
+      })
+    }, 800)
+  }, [saveMutation, weightUnit, tempUnit, currency, timezone])
+
+  function changeWeight(v: WeightUnit)   { setWeightUnit(v); debouncedSave({ preferred_weight_unit: v }) }
+  function changeTemp(v: TempUnit)       { setTempUnit(v);   debouncedSave({ preferred_temp_unit: v }) }
+  function changeCurrency(v: string)     { setCurrency(v);   debouncedSave({ preferred_currency: v }) }
+  function changeTimezone(v: string)     { setTimezone(v);   debouncedSave({ timezone: v }) }
 
   return (
     <div className="space-y-6">
@@ -113,18 +136,18 @@ export function UnitsSection() {
           <PillGroup<WeightUnit>
             label="Weight"
             value={weightUnit}
-            onChange={setWeightUnit}
+            onChange={changeWeight}
             options={[
-              { value: 'g',  label: 'Grams (g)'       },
-              { value: 'kg', label: 'Kilograms (kg)'   },
-              { value: 'oz', label: 'Ounces (oz)'      },
-              { value: 'lb', label: 'Pounds (lb)'      },
+              { value: 'g',  label: 'Grams (g)'      },
+              { value: 'kg', label: 'Kilograms (kg)' },
+              { value: 'oz', label: 'Ounces (oz)'    },
+              { value: 'lb', label: 'Pounds (lb)'    },
             ]}
           />
           <PillGroup<TempUnit>
             label="Temperature"
             value={tempUnit}
-            onChange={setTempUnit}
+            onChange={changeTemp}
             options={[
               { value: 'C', label: '°C — Celsius'    },
               { value: 'F', label: '°F — Fahrenheit' },
@@ -187,35 +210,29 @@ export function UnitsSection() {
           <SelectField
             label="Currency"
             value={currency}
-            onChange={setCurrency}
+            onChange={changeCurrency}
             options={CURRENCIES}
           />
 
           <SelectField
             label="Timezone"
             value={timezone}
-            onChange={setTimezone}
+            onChange={changeTimezone}
             options={TIMEZONES}
           />
         </div>
       </SettingsCard>
 
-      {mutation.error && (
+      {saveMutation.error && (
         <p className="rounded-lg bg-red-900/40 border border-red-700/50 px-3 py-2 text-sm text-red-300">
-          {getErrorMessage(mutation.error)}
+          {getErrorMessage(saveMutation.error)}
         </p>
       )}
-      {mutation.isSuccess && (
+      {saveMutation.isSuccess && (
         <p className="rounded-lg bg-green-900/40 border border-green-700/50 px-3 py-2 text-sm text-green-300">
           Preferences saved.
         </p>
       )}
-
-      <div className="flex justify-end">
-        <Button onClick={() => mutation.mutate()} loading={mutation.isPending}>
-          Save preferences
-        </Button>
-      </div>
     </div>
   )
 }

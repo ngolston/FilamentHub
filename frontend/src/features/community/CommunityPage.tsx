@@ -366,7 +366,7 @@ function ImportModal({
                   ['Material',    filament.material],
                   ['Diameter',    `${filament.diameter}mm`],
                   ['Weight',      `${filament.weights?.[0]?.weight ?? 1000}g`],
-                  ['Spool tare',  filament.weights?.[0]?.spool_weight ? `${filament.weights[0].spool_weight}g` : '—'],
+                  ['Empty spool weight',  filament.weights?.[0]?.spool_weight ? `${filament.weights[0].spool_weight}g` : '—'],
                   ['Print temp',  filament.print_temp_min != null ? `${filament.print_temp_min}–${filament.print_temp_max}°C` : '—'],
                   ['Bed temp',    filament.bed_temp_min   != null ? `${filament.bed_temp_min}–${filament.bed_temp_max}°C`   : '—'],
                   ['Density',     filament.density ? `${filament.density} g/cm³` : '—'],
@@ -410,7 +410,7 @@ function ImportModal({
                 </div>
               </div>
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-gray-300">Spool tare weight (g)</label>
+                <label className="text-sm font-medium text-gray-300">Empty spool weight (g)</label>
                 <input
                   type="number" step="1" placeholder="Optional"
                   value={spoolWeight}
@@ -518,7 +518,7 @@ function DetailModal({ f, onClose, onImport }: { f: CommunityFilament; onClose: 
                 ['Material',    f.material],
                 ['Diameter',    `${f.diameter}mm`],
                 ['Weight',      `${f.weights?.[0]?.weight ?? 1000}g`],
-                ['Spool tare',  f.weights?.[0]?.spool_weight ? `${f.weights[0].spool_weight}g` : '—'],
+                ['Empty spool weight',  f.weights?.[0]?.spool_weight ? `${f.weights[0].spool_weight}g` : '—'],
                 ['Density',     f.density ? `${f.density} g/cm³` : '—'],
                 ['Print temp',  f.print_temp_min != null ? `${f.print_temp_min}–${f.print_temp_max}°C` : '—'],
                 ['Bed temp',    f.bed_temp_min   != null ? `${f.bed_temp_min}–${f.bed_temp_max}°C`   : '—'],

@@ -22,6 +22,11 @@ export const printersApi = {
 
   assignAmsSlot: (printerId: number, unitId: number, slotIndex: number, spoolId: number | null) =>
     api
-      .patch(`/printers/${printerId}/ams/${unitId}/slots/${slotIndex}`, { spool_id: spoolId })
+      .patch(`/printers/${printerId}/ams/${unitId}/slots/${slotIndex}`, null, { params: { spool_id: spoolId } })
+      .then((r) => r.data),
+
+  assignDirectSpool: (printerId: number, spoolId: number | null) =>
+    api
+      .patch<PrinterResponse>(`/printers/${printerId}/direct-spool`, null, { params: { spool_id: spoolId } })
       .then((r) => r.data),
 }

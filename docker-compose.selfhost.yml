@@ -1,0 +1,68 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# FilamentHub — self-host Docker Compose
+#
+# Quick start:
+#   1. cp .env.example .env
+#   2. Set SECRET_KEY in .env  →  openssl rand -hex 32
+#   3. docker compose -f docker-compose.selfhost.yml up -d
+#
+# Data is stored in the `filamenthub_data` named volume (SQLite DB + photos).
+# To back up:  docker run --rm -v filamenthub_data:/data -v $(pwd):/out \
+#                busybox tar czf /out/filamenthub-backup.tar.gz /data
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Backend API ─────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL:  sqlite+aiosqlite:////app/data/filamenthub.db
+      DATA_DIR:      /app/data
+      ENVIRONMENT:   production
+      SECRET_KEY:    "${SECRET_KEY:?Please set SECRET_KEY in your .env file - run: openssl rand -hex 32}"
+      FRONTEND_URL:  ${FRONTEND_URL:-http://localhost}
+      CORS_ORIGINS:  '["${FRONTEND_URL:-http://localhost}","http://localhost"]'
+      # Optional SMTP (required for password-reset emails)
+      SMTP_HOST:     ${SMTP_HOST:-}
+      SMTP_PORT:     ${SMTP_PORT:-587}
+      SMTP_USER:     ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      EMAILS_FROM:   ${EMAILS_FROM:-noreply@filamenthub.local}
+    volumes:
+      - filamenthub_data:/app/data
+    # API is NOT exposed directly — nginx is the single public entry point.
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ── Frontend + Nginx ────────────────────────────────────────────────────────
+  # Builds the React app and serves it alongside the API proxy.
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        # The frontend talks to the API via relative path /api/v1 by default.
+        # Change this only if you serve on a custom subpath.
+        VITE_API_URL: ${VITE_API_URL:-/api/v1}
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx-selfhost.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  filamenthub_data:
+    name: filamenthub_data

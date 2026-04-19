@@ -9,41 +9,43 @@ export default {
         sans: ['Poppins', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       colors: {
-        // Primary: indigo
+        // Primary — indigo scale via CSS variables (supports opacity modifiers)
         primary: {
           50:  '#eef2ff',
           100: '#e0e7ff',
           200: '#c7d2fe',
-          300: '#a5b4fc',
-          400: '#818cf8',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
+          300: 'rgb(var(--primary-300) / <alpha-value>)',
+          400: 'rgb(var(--primary-400) / <alpha-value>)',
+          500: 'rgb(var(--primary-500) / <alpha-value>)',
+          600: 'rgb(var(--primary-600) / <alpha-value>)',
+          700: 'rgb(var(--primary-700) / <alpha-value>)',
           800: '#3730a3',
-          900: '#312e81',
-          950: '#1e1b4b',
+          900: 'rgb(var(--primary-900) / <alpha-value>)',
+          950: 'rgb(var(--primary-950) / <alpha-value>)',
         },
-        // Accent: cyan
+        // Accent — cyan scale via CSS variables
         accent: {
           50:  '#ecfeff',
           100: '#cffafe',
           200: '#a5f3fc',
-          300: '#67e8f9',
-          400: '#22d3ee',
-          500: '#06b6d4',
-          600: '#0891b2',
-          700: '#0e7490',
+          300: 'rgb(var(--accent-300) / <alpha-value>)',
+          400: 'rgb(var(--accent-400) / <alpha-value>)',
+          500: 'rgb(var(--accent-500) / <alpha-value>)',
+          600: 'rgb(var(--accent-600) / <alpha-value>)',
+          700: 'rgb(var(--accent-700) / <alpha-value>)',
           800: '#155e75',
-          900: '#164e63',
+          900: 'rgb(var(--accent-900) / <alpha-value>)',
           950: '#083344',
         },
-        // Dark surface colors
+        // Success
+        success: 'rgb(var(--success) / <alpha-value>)',
+        // Dark surface colors via CSS variables
         surface: {
-          DEFAULT: '#0f1117',
-          1: '#151820',
-          2: '#1c2030',
-          3: '#232840',
-          border: '#2a3050',
+          DEFAULT: 'rgb(var(--surface) / <alpha-value>)',
+          1: 'rgb(var(--surface-1) / <alpha-value>)',
+          2: 'rgb(var(--surface-2) / <alpha-value>)',
+          3: 'rgb(var(--surface-3) / <alpha-value>)',
+          border: 'rgb(var(--surface-border) / <alpha-value>)',
         },
       },
       borderRadius: {

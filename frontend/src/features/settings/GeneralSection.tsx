@@ -1,17 +1,33 @@
-import { useLocalSetting } from '@/hooks/useLocalSetting'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { usersApi } from '@/api/users'
 import { Toggle } from '@/components/ui/Toggle'
 import { SettingsCard } from './SettingsCard'
+import { ONBOARDING_KEY } from '@/features/onboarding/OnboardingFlow'
 
 type ViewMode   = 'grid' | 'table'
 type DateRange  = '7d' | '30d' | '90d' | 'all'
 type SortOrder  = 'date_added' | 'fill_pct' | 'material' | 'brand'
 type PageSize   = 12 | 24 | 48 | 96
 
+interface GeneralPrefs {
+  view_mode:         ViewMode
+  date_range:        DateRange
+  sort_order:        SortOrder
+  page_size:         PageSize
+  delete_confirm:    boolean
+  auto_sync:         boolean
+  low_stock_banner:  boolean
+  hotkeys:           boolean
+}
+
+const DEFAULTS: GeneralPrefs = {
+  view_mode: 'grid', date_range: '30d', sort_order: 'date_added', page_size: 24,
+  delete_confirm: true, auto_sync: true, low_stock_banner: true, hotkeys: true,
+}
+
 function PillGroup<T extends string | number>({
-  options,
-  value,
-  onChange,
-  label,
+  options, value, onChange, label,
 }: {
   options: { value: T; label: string }[]
   value: T
@@ -42,10 +58,7 @@ function PillGroup<T extends string | number>({
 }
 
 function ToggleRow({
-  label,
-  description,
-  checked,
-  onChange,
+  label, description, checked, onChange,
 }: {
   label: string
   description?: string
@@ -64,14 +77,39 @@ function ToggleRow({
 }
 
 export function GeneralSection() {
-  const [viewMode,   setViewMode]   = useLocalSetting<ViewMode>('fh_view_mode', 'grid')
-  const [dateRange,  setDateRange]  = useLocalSetting<DateRange>('fh_date_range', '30d')
-  const [sortOrder,  setSortOrder]  = useLocalSetting<SortOrder>('fh_sort_order', 'date_added')
-  const [pageSize,   setPageSize]   = useLocalSetting<PageSize>('fh_page_size', 24)
-  const [deleteConf, setDeleteConf] = useLocalSetting('fh_delete_confirm', true)
-  const [autoSync,   setAutoSync]   = useLocalSetting('fh_auto_sync', true)
-  const [lowStock,   setLowStock]   = useLocalSetting('fh_low_stock_banner', true)
-  const [hotkeys,    setHotkeys]    = useLocalSetting('fh_hotkeys', true)
+  const qc = useQueryClient()
+
+  const { data: serverPrefs } = useQuery({
+    queryKey: ['ui-prefs'],
+    queryFn:  usersApi.getUiPrefs,
+    select:   (d) => (d as { general?: GeneralPrefs }).general,
+  })
+
+  const [prefs, setPrefs] = useState<GeneralPrefs>(DEFAULTS)
+
+  useEffect(() => {
+    if (serverPrefs) setPrefs((p) => ({ ...p, ...serverPrefs }))
+  }, [serverPrefs])
+
+  const saveMutation = useMutation({
+    mutationFn: (patch: Record<string, unknown>) => usersApi.updateUiPrefs({ general: patch }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ui-prefs'] }),
+  })
+
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debouncedSave = useCallback((patch: Partial<GeneralPrefs>) => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(
+      () => saveMutation.mutate(patch as Record<string, unknown>),
+      600,
+    )
+  }, [saveMutation])
+
+  function set<K extends keyof GeneralPrefs>(key: K, val: GeneralPrefs[K]) {
+    const updated = { ...prefs, [key]: val }
+    setPrefs(updated)
+    debouncedSave({ [key]: val })
+  }
 
   return (
     <div className="space-y-6">
@@ -79,8 +117,8 @@ export function GeneralSection() {
         <div className="space-y-5">
           <PillGroup<ViewMode>
             label="Inventory layout"
-            value={viewMode}
-            onChange={setViewMode}
+            value={prefs.view_mode}
+            onChange={(v) => set('view_mode', v)}
             options={[
               { value: 'grid',  label: 'Grid'  },
               { value: 'table', label: 'Table' },
@@ -88,8 +126,8 @@ export function GeneralSection() {
           />
           <PillGroup<DateRange>
             label="Default date range"
-            value={dateRange}
-            onChange={setDateRange}
+            value={prefs.date_range}
+            onChange={(v) => set('date_range', v)}
             options={[
               { value: '7d',  label: 'Last 7 days'  },
               { value: '30d', label: 'Last 30 days' },
@@ -99,8 +137,8 @@ export function GeneralSection() {
           />
           <PillGroup<SortOrder>
             label="Default sort order"
-            value={sortOrder}
-            onChange={setSortOrder}
+            value={prefs.sort_order}
+            onChange={(v) => set('sort_order', v)}
             options={[
               { value: 'date_added', label: 'Date added' },
               { value: 'fill_pct',   label: 'Fill %'     },
@@ -110,8 +148,8 @@ export function GeneralSection() {
           />
           <PillGroup<PageSize>
             label="Items per page"
-            value={pageSize}
-            onChange={setPageSize}
+            value={prefs.page_size}
+            onChange={(v) => set('page_size', v)}
             options={[
               { value: 12, label: '12' },
               { value: 24, label: '24' },
@@ -122,31 +160,46 @@ export function GeneralSection() {
         </div>
       </SettingsCard>
 
+      <SettingsCard title="Onboarding" description="Setup guide and feature tour.">
+        <div className="flex items-center justify-between gap-4 py-1">
+          <div>
+            <p className="text-sm font-medium text-white">Setup guide</p>
+            <p className="text-xs text-gray-500 mt-0.5">Re-run the onboarding flow to review setup steps and the feature tour.</p>
+          </div>
+          <button
+            onClick={() => { localStorage.removeItem(ONBOARDING_KEY); window.location.reload() }}
+            className="shrink-0 rounded-lg border border-surface-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-gray-300 hover:bg-surface-3 hover:text-white transition-colors"
+          >
+            Restart setup
+          </button>
+        </div>
+      </SettingsCard>
+
       <SettingsCard title="Behaviour" description="App-wide interaction and sync preferences.">
         <div className="divide-y divide-surface-border">
           <ToggleRow
             label="Delete confirmations"
             description="Show a confirmation dialog before permanently deleting items."
-            checked={deleteConf}
-            onChange={setDeleteConf}
+            checked={prefs.delete_confirm}
+            onChange={(v) => set('delete_confirm', v)}
           />
           <ToggleRow
             label="Auto-sync"
             description="Automatically refresh data when the window regains focus."
-            checked={autoSync}
-            onChange={setAutoSync}
+            checked={prefs.auto_sync}
+            onChange={(v) => set('auto_sync', v)}
           />
           <ToggleRow
             label="Low stock banners"
             description="Show a warning banner at the top of inventory when spools are running low."
-            checked={lowStock}
-            onChange={setLowStock}
+            checked={prefs.low_stock_banner}
+            onChange={(v) => set('low_stock_banner', v)}
           />
           <ToggleRow
             label="Keyboard shortcuts"
             description="Enable hotkeys for quick navigation and common actions."
-            checked={hotkeys}
-            onChange={setHotkeys}
+            checked={prefs.hotkeys}
+            onChange={(v) => set('hotkeys', v)}
           />
         </div>
       </SettingsCard>

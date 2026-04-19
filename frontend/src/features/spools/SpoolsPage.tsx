@@ -3,14 +3,17 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Search, Plus, Package, LayoutGrid, List, X,
-  CheckSquare, Download, QrCode, Trash2, AlertCircle,
+  CheckSquare, Download, QrCode, Trash2,
   Printer, MapPin, Scale, Tag, Calendar, DollarSign,
   Thermometer, Droplets, Gauge, Hash, Link2, FileText, Pencil,
   SlidersHorizontal, Bookmark, BookmarkCheck, Columns3,
+  Archive, RotateCcw, PackageOpen,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { spoolsApi } from '@/api/spools'
+import { printJobsApi } from '@/api/print-jobs'
 import { printersApi } from '@/api/printers'
+import { locationsApi } from '@/api/locations'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useAuth } from '@/hooks/useAuth'
@@ -203,7 +206,7 @@ function SpoolDetailModal({ spool, onClose, onEdit }: {
               </div>
               {spool.spool_weight != null && spool.spool_weight > 0 && (
                 <div>
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider">Tare weight</p>
+                  <p className="text-[10px] text-gray-500 uppercase tracking-wider">Empty spool weight</p>
                   <p className="text-sm text-white">{formatWeight(spool.spool_weight)}</p>
                 </div>
               )}
@@ -263,7 +266,7 @@ function SpoolDetailModal({ spool, onClose, onEdit }: {
               <ViewField label="Initial weight" value={formatWeight(spool.initial_weight)} icon={<Package className="h-3.5 w-3.5" />} />
               <ViewField label="Used weight" value={formatWeight(spool.used_weight)} icon={<Package className="h-3.5 w-3.5" />} />
               <ViewField label="Remaining weight" value={formatWeight(spool.remaining_weight)} icon={<Package className="h-3.5 w-3.5" />} />
-              <ViewField label="Tare (empty spool)" value={spool.spool_weight ? formatWeight(spool.spool_weight) : null} icon={<Scale className="h-3.5 w-3.5" />} />
+              <ViewField label="Empty spool weight" value={spool.spool_weight ? formatWeight(spool.spool_weight) : null} icon={<Scale className="h-3.5 w-3.5" />} />
               <ViewField label="Lot number" value={spool.lot_nr ?? null} icon={<Hash className="h-3.5 w-3.5" />} />
             </div>
           </ViewSection>
@@ -556,10 +559,11 @@ export default function SpoolsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   // ── Modals ─────────────────────────────────────────────────────────────────
-  const [viewSpool,   setViewSpool]   = useState<SpoolResponse | null>(null)
-  const [loadModal,   setLoadModal]   = useState<SpoolResponse | null>(null)
-  const [logModal,    setLogModal]    = useState<SpoolResponse | null>(null)
-  const [deleteModal, setDeleteModal] = useState<{ ids: number[]; name?: string } | null>(null)
+  const [viewSpool,    setViewSpool]    = useState<SpoolResponse | null>(null)
+  const [loadModal,    setLoadModal]    = useState<SpoolResponse | null>(null)
+  const [logModal,     setLogModal]     = useState<SpoolResponse | null>(null)
+  const [deleteModal,  setDeleteModal]  = useState<{ ids: number[]; name?: string } | null>(null)
+  const [moveLocModal, setMoveLocModal] = useState(false)
 
   // ── Printer assignments (local state) ──────────────────────────────────────
   const [spoolPrinters, setSpoolPrinters] = useState<Record<number, string>>({})
@@ -695,6 +699,12 @@ export default function SpoolsPage() {
   }
   function clearSelection() { setSelected(new Set()) }
 
+  // ── Location data (for move modal) ────────────────────────────────────────
+  const { data: allLocations = [] } = useQuery({
+    queryKey: ['locations'],
+    queryFn: locationsApi.list,
+  })
+
   // ── Mutations ──────────────────────────────────────────────────────────────
   const deleteMutation = useMutation({
     mutationFn: async (ids: number[]) => {
@@ -709,16 +719,43 @@ export default function SpoolsPage() {
     onError: () => toast('Delete failed', 'error'),
   })
 
+  const bulkMutation = useMutation({
+    mutationFn: spoolsApi.bulkAction,
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['spools'] })
+      const count = vars.ids.length
+      const label = count === 1 ? '1 spool' : `${count} spools`
+      if (vars.action === 'delete') {
+        setDeleteModal(null)
+        setSelected((s) => { const n = new Set(s); vars.ids.forEach((id) => n.delete(id)); return n })
+        toast(`${label} deleted`)
+      } else if (vars.action === 'move_location') {
+        setMoveLocModal(false)
+        toast(`${label} moved`)
+      } else {
+        const statusLabel = vars.action === 'archive' ? 'archived'
+          : vars.action === 'activate' ? 'set to active'
+          : 'set to storage'
+        toast(`${label} ${statusLabel}`)
+      }
+    },
+    onError: () => toast('Action failed', 'error'),
+  })
+
   const logMutation = useMutation({
     mutationFn: async ({ spool, grams, note }: { spool: SpoolResponse; grams: number; note: string }) => {
-      await spoolsApi.update(spool.id, { used_weight: spool.used_weight + grams })
-      if (note || grams) {
-        const measured = Math.max(0, spool.remaining_weight - grams) + (spool.spool_weight ?? 0)
-        await spoolsApi.logWeight(spool.id, { measured_weight: measured, notes: note || undefined })
-      }
+      // Create a print job — the backend handles deducting from used_weight
+      await printJobsApi.create({
+        spool_id: spool.id,
+        filament_used_g: grams,
+        notes: note || undefined,
+        finished_at: new Date().toISOString(),
+      })
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['spools'] })
+      queryClient.invalidateQueries({ queryKey: ['print-jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['analytics'] })
       setLogModal(null)
       toast('Usage logged')
     },
@@ -1151,10 +1188,30 @@ export default function SpoolsPage() {
           <CheckSquare className="h-4 w-4 text-primary-400 shrink-0" />
           <span className="text-sm font-medium text-primary-300">{selected.size} selected</span>
           <div className="ml-2 flex items-center gap-2 flex-wrap">
-            <BulkBtn onClick={() => toast('Alert preferences saved')} icon={<AlertCircle className="h-3.5 w-3.5" />}>Set alerts</BulkBtn>
-            <BulkBtn onClick={() => toast(`Exporting ${selected.size} spools…`)} icon={<Download className="h-3.5 w-3.5" />}>Export</BulkBtn>
-            <BulkBtn onClick={() => toast(`QR labels queued for ${selected.size} spools`)} icon={<QrCode className="h-3.5 w-3.5" />}>Print QR</BulkBtn>
-            <BulkBtn danger onClick={() => setDeleteModal({ ids: [...selected] })} icon={<Trash2 className="h-3.5 w-3.5" />}>Delete</BulkBtn>
+            <BulkBtn
+              onClick={() => bulkMutation.mutate({ ids: [...selected], action: 'activate' })}
+              loading={bulkMutation.isPending && bulkMutation.variables?.action === 'activate'}
+              icon={<PackageOpen className="h-3.5 w-3.5" />}
+            >Active</BulkBtn>
+            <BulkBtn
+              onClick={() => bulkMutation.mutate({ ids: [...selected], action: 'set_storage' })}
+              loading={bulkMutation.isPending && bulkMutation.variables?.action === 'set_storage'}
+              icon={<Package className="h-3.5 w-3.5" />}
+            >Storage</BulkBtn>
+            <BulkBtn
+              onClick={() => bulkMutation.mutate({ ids: [...selected], action: 'archive' })}
+              loading={bulkMutation.isPending && bulkMutation.variables?.action === 'archive'}
+              icon={<Archive className="h-3.5 w-3.5" />}
+            >Archive</BulkBtn>
+            <BulkBtn
+              onClick={() => setMoveLocModal(true)}
+              icon={<MapPin className="h-3.5 w-3.5" />}
+            >Move to…</BulkBtn>
+            <BulkBtn
+              danger
+              onClick={() => setDeleteModal({ ids: [...selected] })}
+              icon={<Trash2 className="h-3.5 w-3.5" />}
+            >Delete</BulkBtn>
           </div>
           <button onClick={clearSelection} className="ml-auto text-gray-500 hover:text-gray-300">
             <X className="h-4 w-4" />
@@ -1244,9 +1301,19 @@ export default function SpoolsPage() {
         <ConfirmDeleteModal
           count={deleteModal.ids.length}
           name={deleteModal.name}
-          loading={deleteMutation.isPending}
+          loading={deleteMutation.isPending || (bulkMutation.isPending && bulkMutation.variables?.action === 'delete')}
           onClose={() => setDeleteModal(null)}
-          onConfirm={() => deleteMutation.mutate(deleteModal.ids)}
+          onConfirm={() => bulkMutation.mutate({ ids: deleteModal.ids, action: 'delete' })}
+        />
+      )}
+
+      {moveLocModal && (
+        <BulkMoveModal
+          locations={allLocations}
+          count={selected.size}
+          loading={bulkMutation.isPending}
+          onClose={() => setMoveLocModal(false)}
+          onConfirm={(locationId) => bulkMutation.mutate({ ids: [...selected], action: 'move_location', location_id: locationId })}
         />
       )}
 
@@ -1255,21 +1322,74 @@ export default function SpoolsPage() {
   )
 }
 
-function BulkBtn({ onClick, icon, children, danger }: {
-  onClick: () => void; icon: React.ReactNode; children: React.ReactNode; danger?: boolean
+function BulkBtn({ onClick, icon, children, danger, loading }: {
+  onClick: () => void
+  icon: React.ReactNode
+  children: React.ReactNode
+  danger?: boolean
+  loading?: boolean
 }) {
   return (
     <button
       onClick={onClick}
+      disabled={loading}
       className={cn(
-        'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors border',
+        'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors border disabled:opacity-50',
         danger
           ? 'border-red-700/50 text-red-400 hover:bg-red-900/20'
           : 'border-surface-border text-gray-300 hover:bg-surface-2 hover:text-white',
       )}
     >
-      {icon}{children}
+      {loading
+        ? <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+        : icon}
+      {children}
     </button>
+  )
+}
+
+function BulkMoveModal({
+  locations, count, loading, onClose, onConfirm,
+}: {
+  locations: { id: number; name: string }[]
+  count: number
+  loading: boolean
+  onClose: () => void
+  onConfirm: (locationId: number | null) => void
+}) {
+  const [locationId, setLocationId] = useState<string>('')
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative w-full max-w-sm rounded-2xl border border-surface-border bg-surface-1 p-6 shadow-2xl">
+        <h2 className="text-base font-semibold text-white mb-1">Move to location</h2>
+        <p className="text-sm text-gray-400 mb-4">
+          Choose a storage location for {count} spool{count !== 1 ? 's' : ''}.
+        </p>
+        <div className="flex flex-col gap-1 mb-5">
+          <label className="text-sm font-medium text-gray-300">Location</label>
+          <select
+            value={locationId}
+            onChange={(e) => setLocationId(e.target.value)}
+            className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none"
+          >
+            <option value="">— No location —</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          <Button
+            loading={loading}
+            onClick={() => onConfirm(locationId ? Number(locationId) : null)}
+          >
+            Move
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 

@@ -1,9 +1,11 @@
+import hashlib
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bcrypt
 import pyotp
-from jose import JWTError, jwt
+from jose import jwt
 
 from app.core.config import get_settings
 
@@ -57,14 +59,24 @@ def verify_totp(secret: str, code: str) -> bool:
     return totp.verify(code, valid_window=1)  # ±30s tolerance
 
 
-# ── API key generation ────────────────────────────────────────────────────────
+# ── Token hashing ─────────────────────────────────────────────────────────────
 
-import secrets
+def hash_token(raw: str) -> str:
+    """SHA-256 hex digest — safe to store in DB."""
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def generate_secure_token() -> str:
+    """URL-safe 32-byte random token."""
+    return secrets.token_urlsafe(32)
+
+
+# ── API key generation ────────────────────────────────────────────────────────
 
 
 def generate_api_key() -> tuple[str, str]:
     """Returns (raw_key, hashed_key). Store only the hash."""
-    raw = f"fh_{secrets.token_urlsafe(32)}"
+    raw = f"fh_{generate_secure_token()}"
     hashed = bcrypt.hashpw(raw.encode(), bcrypt.gensalt()).decode()
     return raw, hashed
 

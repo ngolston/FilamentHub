@@ -5,10 +5,13 @@ import {
   Database, CheckCircle2,
 } from 'lucide-react'
 import { dataApi } from '@/api/data'
+import { spoolsApi } from '@/api/spools'
+import { useAuthStore } from '@/stores/auth'
 import { useLocalSetting } from '@/hooks/useLocalSetting'
 import { Toggle } from '@/components/ui/Toggle'
 import { Button } from '@/components/ui/Button'
 import { getErrorMessage } from '@/api/client'
+import { exportInventoryPdf } from '@/utils/exportPdf'
 import { SettingsCard } from './SettingsCard'
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -23,10 +26,12 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 export function DataBackupSection() {
-  const csvRef       = useRef<HTMLInputElement>(null)
-  const spoolmanRef  = useRef<HTMLInputElement>(null)
+  const csvRef      = useRef<HTMLInputElement>(null)
+  const spoolmanRef = useRef<HTMLInputElement>(null)
+  const user        = useAuthStore((s) => s.user)
 
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null)
+  const [pdfError,     setPdfError]     = useState<string | null>(null)
 
   const [autoBackup,  setAutoBackup]  = useLocalSetting('fh_auto_backup',  false)
   const [backupFreq,  setBackupFreq]  = useLocalSetting('fh_backup_freq',  'weekly')
@@ -43,9 +48,24 @@ export function DataBackupSection() {
     onSuccess: (blob) => downloadBlob(blob, 'filamenthub_export.json'),
   })
 
-  // Import mutation
+  const pdfMutation = useMutation({
+    mutationFn: async () => {
+      setPdfError(null)
+      // Fetch all spools (up to 1000 — plenty for a print report)
+      const result = await spoolsApi.list({ page_size: 1000 })
+      exportInventoryPdf(result.items, user?.display_name ?? user?.email)
+    },
+    onError: (err) => setPdfError(getErrorMessage(err)),
+  })
+
+  // Import mutations
   const importMutation = useMutation({
     mutationFn: dataApi.importSpoolman,
+    onSuccess: (data) => setImportResult(data),
+  })
+
+  const csvImportMutation = useMutation({
+    mutationFn: dataApi.importCsv,
     onSuccess: (data) => setImportResult(data),
   })
 
@@ -73,8 +93,10 @@ export function DataBackupSection() {
           <ExportCard
             icon={<File className="h-5 w-5" />}
             label="PDF"
-            description="Print-ready inventory report with QR labels."
-            soon
+            description="Print-ready inventory report — one row per spool with fill %, status, and location."
+            loading={pdfMutation.isPending}
+            error={pdfError ?? undefined}
+            onClick={() => pdfMutation.mutate()}
           />
         </div>
       </SettingsCard>
@@ -88,7 +110,9 @@ export function DataBackupSection() {
               <p className="text-sm font-medium text-green-300">Import complete</p>
               <p className="text-xs text-green-400/80 mt-0.5">
                 {importResult.imported} spool{importResult.imported !== 1 ? 's' : ''} imported
-                {importResult.skipped > 0 && `, ${importResult.skipped} skipped`}.
+                {importResult.skipped > 0 && `, ${importResult.skipped} skipped`}
+                {importResult.brands_created > 0 && ` · ${importResult.brands_created} brand${importResult.brands_created !== 1 ? 's' : ''} created`}
+                {importResult.profiles_created > 0 && ` · ${importResult.profiles_created} filament profile${importResult.profiles_created !== 1 ? 's' : ''} created`}.
               </p>
             </div>
           </div>
@@ -104,8 +128,9 @@ export function DataBackupSection() {
           <ImportCard
             icon={<FileText className="h-5 w-5" />}
             label="FilamentHub CSV"
-            description="Previously exported CSV file."
-            soon
+            description="Re-import a previously exported CSV file."
+            loading={csvImportMutation.isPending}
+            onClick={() => csvRef.current?.click()}
           />
           <ImportCard
             icon={<Database className="h-5 w-5" />}
@@ -117,13 +142,24 @@ export function DataBackupSection() {
           <ImportCard
             icon={<FileJson className="h-5 w-5" />}
             label="FilamentHub backup"
-            description="Restore from a full FilamentHub export."
-            soon
+            description="Restore from a full FilamentHub JSON export."
+            loading={importMutation.isPending}
+            onClick={() => spoolmanRef.current?.click()}
           />
         </div>
 
         {/* Hidden file inputs */}
-        <input ref={csvRef}      type="file" accept=".csv"  className="hidden" />
+        <input
+          ref={csvRef}
+          type="file"
+          accept=".csv"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) { setImportResult(null); csvImportMutation.mutate(file) }
+            e.target.value = ''
+          }}
+        />
         <input
           ref={spoolmanRef}
           type="file"

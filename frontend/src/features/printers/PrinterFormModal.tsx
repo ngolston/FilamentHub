@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -11,12 +10,13 @@ import { getErrorMessage } from '@/api/client'
 import type { PrinterResponse, PrinterConnectionType } from '@/types/api'
 
 const schema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  model: z.string().optional(),
+  name:            z.string().min(1, 'Name is required'),
+  model:           z.string().optional(),
+  serial_number:   z.string().optional(),
   connection_type: z.enum(['octoprint', 'moonraker', 'bambu', 'manual']),
-  api_url: z.string().optional(),
-  api_key: z.string().optional(),
-  notes: z.string().optional(),
+  api_url:         z.string().optional(),
+  api_key:         z.string().optional(),
+  notes:           z.string().optional(),
 })
 type FormData = z.infer<typeof schema>
 
@@ -29,7 +29,7 @@ const CONNECTION_TYPES: { value: PrinterConnectionType; label: string }[] = [
 
 interface Props {
   printer?: PrinterResponse
-  onClose: () => void
+  onClose:  () => void
 }
 
 export function PrinterFormModal({ printer, onClose }: Props) {
@@ -39,23 +39,34 @@ export function PrinterFormModal({ printer, onClose }: Props) {
   const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      name: printer?.name ?? '',
-      model: printer?.model ?? '',
+      name:            printer?.name            ?? '',
+      model:           printer?.model           ?? '',
+      serial_number:   printer?.serial_number   ?? '',
       connection_type: (printer?.connection_type as PrinterConnectionType) ?? 'manual',
-      api_url: '',
-      api_key: '',
-      notes: printer?.notes ?? '',
+      api_url:         printer?.api_url ?? (printer?.connection_type === 'bambu' ? '' : ''),
+      api_key:         '',
+      notes:           printer?.notes ?? '',
     },
   })
 
   const connectionType = watch('connection_type')
+  const isBambu  = connectionType === 'bambu'
   const needsApi = connectionType !== 'manual'
 
   const mutation = useMutation({
-    mutationFn: (data: FormData) =>
-      isEdit
-        ? printersApi.update(printer.id, data)
-        : printersApi.create(data),
+    mutationFn: (data: FormData) => {
+      const payload = {
+        ...data,
+        model:         data.model         || undefined,
+        serial_number: data.serial_number || undefined,
+        api_url:       data.api_url       || undefined,
+        api_key:       data.api_key       || undefined,
+        notes:         data.notes         || undefined,
+      }
+      return isEdit
+        ? printersApi.update(printer.id, payload)
+        : printersApi.create(payload)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['printers'] })
       onClose()
@@ -76,9 +87,11 @@ export function PrinterFormModal({ printer, onClose }: Props) {
         </div>
 
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
-          <Input label="Name" placeholder="My Bambu X1C" error={errors.name?.message} {...register('name')} />
-          <Input label="Model" placeholder="X1 Carbon, MK4, …" {...register('model')} />
+          {/* Name + Model */}
+          <Input label="Printer name" placeholder="My Bambu X1C" error={errors.name?.message} {...register('name')} />
+          <Input label="Model" placeholder="X1 Carbon, MK4, Ender 3…" {...register('model')} />
 
+          {/* Connection type */}
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-gray-300">Connection type</label>
             <select
@@ -91,20 +104,49 @@ export function PrinterFormModal({ printer, onClose }: Props) {
             </select>
           </div>
 
+          {/* Connection fields — vary by type */}
           {needsApi && (
-            <>
-              <Input label="API URL" placeholder="http://192.168.1.x" {...register('api_url')} />
-              <Input label="API Key" placeholder="Optional" {...register('api_key')} />
-            </>
+            <div className="rounded-lg border border-surface-border bg-surface-2/40 p-3 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+                {isBambu ? 'Bambu Lab connection' : 'Network connection'}
+              </p>
+
+              <Input
+                label={isBambu ? 'IP Address' : 'API URL'}
+                placeholder={isBambu ? '192.168.1.x' : 'http://192.168.1.x'}
+                {...register('api_url')}
+              />
+
+              {isBambu && (
+                <Input
+                  label="Serial number"
+                  placeholder="01P00A123456789"
+                  {...register('serial_number')}
+                />
+              )}
+
+              <Input
+                label={isBambu ? 'Access code' : 'API key'}
+                placeholder={isBambu ? 'Found in printer settings' : 'Optional'}
+                {...register('api_key')}
+              />
+
+              {isBambu && (
+                <p className="text-xs text-gray-600">
+                  IP address and access code are found in your printer's Settings → Network → Network Info.
+                </p>
+              )}
+            </div>
           )}
 
+          {/* Notes */}
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-gray-300">Notes</label>
             <textarea
               {...register('notes')}
               rows={2}
               className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-primary-500 focus:outline-none resize-none"
-              placeholder="Optional notes"
+              placeholder="Optional"
             />
           </div>
 

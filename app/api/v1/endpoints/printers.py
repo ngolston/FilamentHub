@@ -17,7 +17,10 @@ def _printer_q(owner_id: str):
     return (
         select(Printer)
         .where(Printer.owner_id == owner_id)
-        .options(selectinload(Printer.ams_units).selectinload(AmsUnit.slots).selectinload(AmsSlot.spool))
+        .options(
+            selectinload(Printer.ams_units).selectinload(AmsUnit.slots).selectinload(AmsSlot.spool),
+            selectinload(Printer.direct_spool),
+        )
     )
 
 
@@ -39,7 +42,8 @@ async def create_printer(
     printer = Printer(owner_id=current_user.id, **body.model_dump())
     db.add(printer)
     await db.flush()
-    return printer
+    result = await db.execute(_printer_q(current_user.id).where(Printer.id == printer.id))
+    return result.scalar_one()
 
 
 @router.get("/{printer_id}", response_model=PrinterResponse)
@@ -70,7 +74,9 @@ async def update_printer(
         raise HTTPException(status_code=404, detail="Printer not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(printer, field, value)
-    return printer
+    await db.flush()
+    result = await db.execute(_printer_q(current_user.id).where(Printer.id == printer.id))
+    return result.scalar_one()
 
 
 @router.delete("/{printer_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -147,3 +153,30 @@ async def assign_spool_to_slot(
 
     slot.spool_id = spool_id
     return {"unit_id": unit_id, "slot_index": slot_index, "spool_id": spool_id}
+
+
+# ── Direct / external spool ───────────────────────────────────────────────────
+
+@router.patch("/{printer_id}/direct-spool", response_model=PrinterResponse)
+async def assign_direct_spool(
+    printer_id: int,
+    spool_id: int | None = None,
+    current_user: User = Depends(require_editor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Assign (or unassign) the external spool directly loaded into the printer."""
+    result = await db.execute(_printer_q(current_user.id).where(Printer.id == printer_id))
+    printer = result.scalar_one_or_none()
+    if not printer:
+        raise HTTPException(status_code=404, detail="Printer not found")
+
+    if spool_id is not None:
+        spool = await db.get(Spool, spool_id)
+        if not spool or spool.owner_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Spool not found")
+
+    printer.direct_spool_id = spool_id
+    await db.flush()
+    # Reload with relationships
+    result2 = await db.execute(_printer_q(current_user.id).where(Printer.id == printer_id))
+    return result2.scalar_one()

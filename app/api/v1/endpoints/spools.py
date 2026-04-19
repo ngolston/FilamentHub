@@ -7,8 +7,9 @@ from sqlalchemy.orm import selectinload
 
 from app.api.v1.deps import get_current_user, require_editor
 from app.db.session import get_db
-from app.models.models import PrintJob, Spool, SpoolStatus, User, WeightLog
+from app.models.models import Spool, StorageLocation, User, WeightLog
 from app.schemas.schemas import (
+    BulkSpoolAction,
     PaginatedResponse,
     SpoolCreate,
     SpoolResponse,
@@ -39,7 +40,7 @@ def _spool_query(owner_id: str):
 async def list_spools(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    status: str | None = None,
+    status: str | None = Query(None),  # noqa: A002 — shadows built-in intentionally
     material: str | None = None,
     brand_id: int | None = None,
     location_id: int | None = None,
@@ -188,7 +189,12 @@ async def log_weight(
     tare = body.spool_weight_tare or (spool.spool_weight or 0)
     net = max(0.0, body.measured_weight - tare)
 
-    log = WeightLog(spool_id=spool_id, measured_weight=body.measured_weight, net_weight=net, notes=body.notes)
+    log = WeightLog(
+        spool_id=spool_id,
+        measured_weight=body.measured_weight,
+        net_weight=net,
+        notes=body.notes,
+    )
     db.add(log)
 
     # Update spool remaining weight
@@ -212,3 +218,50 @@ async def get_weight_logs(
         .order_by(WeightLog.logged_at.desc())
     )
     return result.scalars().all()
+
+
+# ── Bulk operations ───────────────────────────────────────────────────────────
+
+_STATUS_MAP = {
+    "archive": "archived",
+    "activate": "active",
+    "set_storage": "storage",
+}
+
+
+@router.post("/bulk", status_code=status.HTTP_204_NO_CONTENT)
+async def bulk_action(
+    body: BulkSpoolAction,
+    current_user: User = Depends(require_editor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Apply a bulk action (status change, move location, delete) to a list of spool IDs."""
+    result = await db.execute(
+        select(Spool).where(
+            Spool.id.in_(body.ids),
+            Spool.owner_id == current_user.id,
+        )
+    )
+    spools = result.scalars().all()
+
+    if body.action == "delete":
+        for spool in spools:
+            await db.delete(spool)
+        return
+
+    if body.action == "move_location":
+        if body.location_id is not None:
+            # Validate location belongs to owner
+            loc_result = await db.execute(
+                select(StorageLocation).where(StorageLocation.id == body.location_id)
+            )
+            if not loc_result.scalar_one_or_none():
+                raise HTTPException(status_code=404, detail="Location not found")
+        for spool in spools:
+            spool.location_id = body.location_id
+        return
+
+    new_status = _STATUS_MAP.get(body.action)
+    if new_status:
+        for spool in spools:
+            spool.status = new_status

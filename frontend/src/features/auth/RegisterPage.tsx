@@ -1,13 +1,15 @@
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link, useNavigate } from 'react-router-dom'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { useQuery } from '@tanstack/react-query'
 import { Flame } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { getErrorMessage } from '@/api/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { useState } from 'react'
+import { systemApi } from '@/api/system'
 
 const schema = z.object({
   display_name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -23,6 +25,19 @@ type FormData = z.infer<typeof schema>
 export default function RegisterPage() {
   const { register: registerUser, isLoading } = useAuth()
   const navigate = useNavigate()
+
+  const { data: publicConfig } = useQuery({
+    queryKey: ['system', 'public-config'],
+    queryFn: systemApi.getPublicConfig,
+    staleTime: Infinity,
+  })
+
+  // Redirect to login if registration is disabled
+  useEffect(() => {
+    if (publicConfig && !publicConfig.allow_registration) {
+      navigate('/login', { replace: true })
+    }
+  }, [publicConfig, navigate])
   const [serverError, setServerError] = useState<string | null>(null)
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({

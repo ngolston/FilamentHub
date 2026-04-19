@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Search, X } from 'lucide-react'
+import { Camera, Search, Trash2, Upload, X } from 'lucide-react'
 import { spoolsApi } from '@/api/spools'
 import { filamentsApi } from '@/api/filaments'
 import { brandsApi } from '@/api/brands'
@@ -30,8 +30,9 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 interface Props {
-  spool?:   SpoolResponse
-  onClose:  () => void
+  spool?:             SpoolResponse
+  prefillFilamentId?: number
+  onClose:            () => void
 }
 
 // ── Filament picker ───────────────────────────────────────────────────────────
@@ -132,6 +133,105 @@ function FilamentPicker({
   )
 }
 
+// ── Photo upload section ──────────────────────────────────────────────────────
+
+function PhotoSection({
+  spoolId,
+  currentUrl,
+  pendingFile,
+  onPendingChange,
+}: {
+  spoolId: number | undefined
+  currentUrl: string | null | undefined
+  pendingFile: File | null
+  onPendingChange: (f: File | null) => void
+}) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const qc = useQueryClient()
+
+  const uploadMutation = useMutation({
+    mutationFn: ({ id, file }: { id: number; file: File }) => spoolsApi.uploadPhoto(id, file),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['spools'] }),
+  })
+
+  const previewUrl = pendingFile
+    ? URL.createObjectURL(pendingFile)
+    : currentUrl ?? null
+
+  function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null
+    if (!file) return
+    onPendingChange(file)
+    // If editing an existing spool, upload immediately
+    if (spoolId) {
+      uploadMutation.mutate({ id: spoolId, file })
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Photo</p>
+
+      <div className="flex items-start gap-4">
+        {/* Preview */}
+        <div
+          className="relative h-24 w-24 shrink-0 cursor-pointer rounded-xl border border-surface-border bg-surface-2 overflow-hidden flex items-center justify-center"
+          onClick={() => fileRef.current?.click()}
+          title="Click to upload photo"
+        >
+          {previewUrl ? (
+            <img src={previewUrl} alt="Spool" className="h-full w-full object-cover" />
+          ) : (
+            <Camera className="h-8 w-8 text-gray-600" />
+          )}
+          <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity">
+            <Upload className="h-5 w-5 text-white" />
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="flex flex-col gap-2 pt-1">
+          <button
+            type="button"
+            onClick={() => fileRef.current?.click()}
+            className="text-sm text-primary-400 hover:text-primary-300 transition-colors text-left"
+          >
+            {previewUrl ? 'Change photo' : 'Upload photo'}
+          </button>
+          {previewUrl && (
+            <button
+              type="button"
+              onClick={() => onPendingChange(null)}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-400 transition-colors text-left"
+            >
+              <Trash2 className="h-3 w-3" />
+              Remove
+            </button>
+          )}
+          {uploadMutation.isPending && (
+            <p className="text-xs text-gray-500">Uploading…</p>
+          )}
+          {uploadMutation.isSuccess && (
+            <p className="text-xs text-green-400">Photo saved</p>
+          )}
+          {uploadMutation.error && (
+            <p className="text-xs text-red-400">{getErrorMessage(uploadMutation.error)}</p>
+          )}
+          <p className="text-xs text-gray-600">JPEG, PNG or WebP. Max 10 MB.</p>
+        </div>
+      </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={handleFile}
+      />
+    </div>
+  )
+}
+
 // ── Form section wrapper ──────────────────────────────────────────────────────
 
 function Section({ label, children }: { label: string; children: React.ReactNode }) {
@@ -145,7 +245,7 @@ function Section({ label, children }: { label: string; children: React.ReactNode
 
 // ── Main modal ────────────────────────────────────────────────────────────────
 
-export function SpoolFormModal({ spool, onClose }: Props) {
+export function SpoolFormModal({ spool, prefillFilamentId, onClose }: Props) {
   const queryClient = useQueryClient()
   const isEdit = !!spool
 
@@ -154,8 +254,9 @@ export function SpoolFormModal({ spool, onClose }: Props) {
     queryFn: brandsApi.list,
   })
 
-  const defaultFilamentId = spool?.filament?.id
+  const defaultFilamentId = spool?.filament?.id ?? prefillFilamentId
   const [filamentId, setFilamentId] = useState<number | undefined>(defaultFilamentId)
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null)
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -167,7 +268,7 @@ export function SpoolFormModal({ spool, onClose }: Props) {
       initial_weight: spool?.initial_weight ?? 1000,
       spool_weight:   spool?.spool_weight   ?? undefined,
       used_weight:    spool?.used_weight    ?? 0,
-      status:         spool?.status         ?? 'active',
+      status:         spool?.status         ?? 'storage',
       purchase_date:  spool?.purchase_date  ?? '',
       purchase_price: spool?.purchase_price ?? undefined,
       supplier:       spool?.supplier       ?? '',
@@ -177,7 +278,7 @@ export function SpoolFormModal({ spool, onClose }: Props) {
   })
 
   const mutation = useMutation({
-    mutationFn: (data: FormData) => {
+    mutationFn: async (data: FormData) => {
       const payload = {
         ...data,
         filament_id:    data.filament_id    || undefined,
@@ -191,9 +292,14 @@ export function SpoolFormModal({ spool, onClose }: Props) {
         product_url:    data.product_url    || undefined,
         notes:          data.notes          || undefined,
       }
-      return isEdit
-        ? spoolsApi.update(spool.id, payload)
-        : spoolsApi.create(payload as Parameters<typeof spoolsApi.create>[0])
+      const saved = isEdit
+        ? await spoolsApi.update(spool.id, payload)
+        : await spoolsApi.create(payload as Parameters<typeof spoolsApi.create>[0])
+      // Upload pending photo on create (edit uploads immediately on file select)
+      if (!isEdit && pendingPhoto) {
+        await spoolsApi.uploadPhoto(saved.id, pendingPhoto)
+      }
+      return saved
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['spools'] })
@@ -213,6 +319,14 @@ export function SpoolFormModal({ spool, onClose }: Props) {
         </div>
 
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-5">
+
+          {/* Photo */}
+          <PhotoSection
+            spoolId={isEdit ? spool.id : undefined}
+            currentUrl={spool?.photo_url}
+            pendingFile={pendingPhoto}
+            onPendingChange={setPendingPhoto}
+          />
 
           {/* Filament profile picker */}
           <Section label="Filament">
@@ -268,7 +382,7 @@ export function SpoolFormModal({ spool, onClose }: Props) {
               </div>
               <div className="col-span-1">
                 <Input
-                  label="Spool tare (g)"
+                  label="Empty spool weight (g)"
                   type="number"
                   step="1"
                   placeholder="~250"

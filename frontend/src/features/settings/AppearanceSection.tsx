@@ -1,12 +1,28 @@
-import { Monitor, Moon, Sun } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Moon, Sun, Contrast, CloudMoon } from 'lucide-react'
 import { cn } from '@/utils/cn'
-import { useLocalSetting } from '@/hooks/useLocalSetting'
+import { applyTheme, type AppTheme } from '@/hooks/useTheme'
+import { usersApi } from '@/api/users'
 import { Toggle } from '@/components/ui/Toggle'
 import { SettingsCard } from './SettingsCard'
 
-type Theme    = 'dark' | 'light' | 'system'
 type Density  = 'compact' | 'default' | 'comfortable'
 type FontSize = 'small' | 'medium' | 'large'
+
+interface AppearancePrefs {
+  theme:         AppTheme
+  accent:        string
+  accent_custom: string
+  density:       Density
+  font_size:     FontSize
+  reduce_motion: boolean
+}
+
+const DEFAULTS: AppearancePrefs = {
+  theme: 'theme-dark', accent: '#4f46e5', accent_custom: '',
+  density: 'default', font_size: 'medium', reduce_motion: false,
+}
 
 const ACCENT_COLORS = [
   { name: 'Indigo',   value: '#4f46e5' },
@@ -19,11 +35,52 @@ const ACCENT_COLORS = [
   { name: 'Orange',   value: '#ea580c' },
 ]
 
+const THEMES: {
+  value: AppTheme
+  label: string
+  description: string
+  icon: React.ReactNode
+  preview: { bg: string; surface: string; primary: string }
+}[] = [
+  {
+    value: 'theme-dark',
+    label: 'Dark',
+    description: 'Classic deep navy dark mode',
+    icon: <Moon className="h-5 w-5" />,
+    preview: { bg: '#0f1117', surface: '#1c2030', primary: '#4f46e5' },
+  },
+  {
+    value: 'theme-soft-dark',
+    label: 'Soft Dark',
+    description: 'Softer slate tones, easier on the eyes',
+    icon: <CloudMoon className="h-5 w-5" />,
+    preview: { bg: '#111827', surface: '#374151', primary: '#6366f1' },
+  },
+  {
+    value: 'theme-muted-dark',
+    label: 'Muted Dark',
+    description: 'Very deep background, lighter accents',
+    icon: <Moon className="h-5 w-5" />,
+    preview: { bg: '#0b0f14', surface: '#1a2333', primary: '#818cf8' },
+  },
+  {
+    value: 'theme-high-contrast',
+    label: 'High Contrast',
+    description: 'Near-black base with sharper borders',
+    icon: <Contrast className="h-5 w-5" />,
+    preview: { bg: '#05070a', surface: '#1f2937', primary: '#6366f1' },
+  },
+  {
+    value: 'theme-light',
+    label: 'Light',
+    description: 'Clean white interface',
+    icon: <Sun className="h-5 w-5" />,
+    preview: { bg: '#f1f5f9', surface: '#e2e8f0', primary: '#4f46e5' },
+  },
+]
+
 function PillGroup<T extends string>({
-  options,
-  value,
-  onChange,
-  label,
+  options, value, onChange, label,
 }: {
   options: { value: T; label: string }[]
   value: T
@@ -54,48 +111,88 @@ function PillGroup<T extends string>({
 }
 
 export function AppearanceSection() {
-  const [theme,        setTheme]        = useLocalSetting<Theme>('fh_theme', 'dark')
-  const [accentColor,  setAccentColor]  = useLocalSetting('fh_accent', '#4f46e5')
-  const [customHex,    setCustomHex]    = useLocalSetting('fh_accent_custom', '')
-  const [density,      setDensity]      = useLocalSetting<Density>('fh_density', 'default')
-  const [fontSize,     setFontSize]     = useLocalSetting<FontSize>('fh_font_size', 'medium')
-  const [reduceMotion, setReduceMotion] = useLocalSetting('fh_reduce_motion', false)
+  const qc = useQueryClient()
 
-  const themes: { value: Theme; label: string; icon: React.ReactNode; soon?: boolean }[] = [
-    { value: 'dark',   label: 'Dark',   icon: <Moon className="h-5 w-5"    /> },
-    { value: 'light',  label: 'Light',  icon: <Sun className="h-5 w-5"     />, soon: true },
-    { value: 'system', label: 'System', icon: <Monitor className="h-5 w-5" />, soon: true },
-  ]
+  const { data: serverPrefs } = useQuery({
+    queryKey: ['ui-prefs'],
+    queryFn:  usersApi.getUiPrefs,
+    select:   (d) => (d as { appearance?: AppearancePrefs }).appearance,
+  })
+
+  const [prefs, setPrefs] = useState<AppearancePrefs>(DEFAULTS)
+
+  useEffect(() => {
+    if (serverPrefs) {
+      setPrefs((p) => ({ ...p, ...serverPrefs }))
+      // Sync theme to localStorage so useThemeApplier picks it up on next load
+      if (serverPrefs.theme) {
+        localStorage.setItem('fh_theme', JSON.stringify(serverPrefs.theme))
+        applyTheme(serverPrefs.theme)
+      }
+    }
+  }, [serverPrefs])
+
+  const saveMutation = useMutation({
+    mutationFn: (patch: Record<string, unknown>) => usersApi.updateUiPrefs({ appearance: patch }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ui-prefs'] }),
+  })
+
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debouncedSave = useCallback((patch: Partial<AppearancePrefs>) => {
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(
+      () => saveMutation.mutate(patch as Record<string, unknown>),
+      600,
+    )
+  }, [saveMutation])
+
+  function set<K extends keyof AppearancePrefs>(key: K, val: AppearancePrefs[K]) {
+    const updated = { ...prefs, [key]: val }
+    setPrefs(updated)
+    debouncedSave({ [key]: val })
+  }
+
+  function handleThemeChange(t: AppTheme) {
+    // Write to localStorage immediately so useThemeApplier works on next page load
+    localStorage.setItem('fh_theme', JSON.stringify(t))
+    applyTheme(t)
+    set('theme', t)
+  }
 
   return (
     <div className="space-y-6">
       {/* Theme */}
       <SettingsCard title="Theme" description="Choose your preferred colour scheme.">
-        <div className="grid grid-cols-3 gap-3">
-          {themes.map((t) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {THEMES.map((t) => (
             <button
               key={t.value}
               type="button"
-              disabled={t.soon}
-              onClick={() => !t.soon && setTheme(t.value)}
+              onClick={() => handleThemeChange(t.value)}
               className={cn(
-                'relative flex flex-col items-center gap-2 rounded-xl border p-4 transition-all',
-                theme === t.value && !t.soon
-                  ? 'border-primary-500 bg-primary-600/10 text-white'
-                  : 'border-surface-border bg-surface-2 text-gray-400',
-                t.soon
-                  ? 'opacity-50 cursor-not-allowed'
-                  : 'hover:border-gray-500 hover:text-white cursor-pointer',
+                'relative flex items-center gap-3 rounded-xl border p-3 text-left transition-all',
+                prefs.theme === t.value
+                  ? 'border-primary-500 bg-primary-600/10'
+                  : 'border-surface-border bg-surface-2 hover:border-gray-500 cursor-pointer',
               )}
             >
-              {t.icon}
-              <span className="text-sm font-medium">{t.label}</span>
-              {t.soon && (
-                <span className="absolute top-2 right-2 rounded text-[9px] font-semibold uppercase tracking-wide bg-surface-3 text-gray-400 px-1.5 py-0.5">
-                  Soon
-                </span>
-              )}
-              {theme === t.value && !t.soon && (
+              <div
+                className="h-10 w-10 shrink-0 rounded-lg border border-black/20 overflow-hidden"
+                style={{ background: t.preview.bg }}
+              >
+                <div className="h-4 mx-1 mt-1.5 rounded" style={{ background: t.preview.surface }} />
+                <div className="h-2 w-6 mx-1 mt-1 rounded" style={{ background: t.preview.primary }} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className={cn(
+                  'text-sm font-medium leading-tight',
+                  prefs.theme === t.value ? 'text-primary-300' : 'text-white',
+                )}>
+                  {t.label}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5 leading-tight">{t.description}</p>
+              </div>
+              {prefs.theme === t.value && (
                 <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-primary-500" />
               )}
             </button>
@@ -110,11 +207,11 @@ export function AppearanceSection() {
             <button
               key={c.value}
               type="button"
-              onClick={() => { setAccentColor(c.value); setCustomHex('') }}
+              onClick={() => { set('accent', c.value); set('accent_custom', '') }}
               title={c.name}
               className={cn(
                 'h-8 w-8 rounded-full border-2 transition-transform hover:scale-110',
-                accentColor === c.value && !customHex
+                prefs.accent === c.value && !prefs.accent_custom
                   ? 'border-white scale-110'
                   : 'border-transparent',
               )}
@@ -125,13 +222,13 @@ export function AppearanceSection() {
         <div className="flex items-center gap-3">
           <div
             className="h-8 w-8 shrink-0 rounded-full border-2 border-surface-border"
-            style={{ backgroundColor: customHex?.match(/^#[0-9a-fA-F]{6}$/) ? customHex : '#374151' }}
+            style={{ backgroundColor: prefs.accent_custom?.match(/^#[0-9a-fA-F]{6}$/) ? prefs.accent_custom : '#374151' }}
           />
           <input
-            value={customHex}
+            value={prefs.accent_custom}
             onChange={(e) => {
-              setCustomHex(e.target.value)
-              if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) setAccentColor(e.target.value)
+              set('accent_custom', e.target.value)
+              if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) set('accent', e.target.value)
             }}
             placeholder="Custom hex, e.g. #a855f7"
             className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-primary-500 focus:outline-none"
@@ -147,8 +244,8 @@ export function AppearanceSection() {
         <div className="space-y-5">
           <PillGroup<Density>
             label="Density"
-            value={density}
-            onChange={setDensity}
+            value={prefs.density}
+            onChange={(v) => set('density', v)}
             options={[
               { value: 'compact',     label: 'Compact'     },
               { value: 'default',     label: 'Default'     },
@@ -157,8 +254,8 @@ export function AppearanceSection() {
           />
           <PillGroup<FontSize>
             label="Font size"
-            value={fontSize}
-            onChange={setFontSize}
+            value={prefs.font_size}
+            onChange={(v) => set('font_size', v)}
             options={[
               { value: 'small',  label: 'Small'  },
               { value: 'medium', label: 'Medium' },
@@ -170,7 +267,7 @@ export function AppearanceSection() {
               <p className="text-sm font-medium text-white">Reduce motion</p>
               <p className="text-xs text-gray-500 mt-0.5">Minimise animations throughout the interface.</p>
             </div>
-            <Toggle checked={reduceMotion} onChange={setReduceMotion} />
+            <Toggle checked={prefs.reduce_motion} onChange={(v) => set('reduce_motion', v)} />
           </div>
         </div>
       </SettingsCard>

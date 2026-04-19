@@ -11,10 +11,17 @@ import { spoolsApi } from '@/api/spools'
 import { filamentsApi } from '@/api/filaments'
 import { brandsApi } from '@/api/brands'
 import { locationsApi } from '@/api/locations'
+import { printersApi } from '@/api/printers'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { getErrorMessage } from '@/api/client'
-import type { FilamentProfileResponse, BrandResponse, LocationResponse, SpoolStatus } from '@/types/api'
+import type { FilamentProfileResponse, BrandResponse, LocationResponse, SpoolStatus, PrinterResponse } from '@/types/api'
+
+// ── Assignment types ──────────────────────────────────────────────────────────
+type SlotAssignment =
+  | { type: 'ams'; printerId: number; unitId: number; slotIndex: number }
+  | { type: 'direct'; printerId: number }
+  | null
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -633,6 +640,144 @@ function PrintInfoChip({ label, value }: { label: string; value: string }) {
   )
 }
 
+// ── Printer assignment picker ─────────────────────────────────────────────────
+
+function PrinterAssignmentPicker({
+  printers,
+  selectedPrinterId,
+  assignment,
+  onPrinterChange,
+  onSlotSelect,
+}: {
+  printers: PrinterResponse[]
+  selectedPrinterId: number | ''
+  assignment: SlotAssignment
+  onPrinterChange: (id: number | '') => void
+  onSlotSelect: (a: SlotAssignment) => void
+}) {
+  const selectedPrinter = printers.find((p) => p.id === selectedPrinterId) ?? null
+  const sortedUnits = selectedPrinter
+    ? [...selectedPrinter.ams_units].sort((a, b) => a.unit_index - b.unit_index)
+    : []
+
+  function isSelected(a: SlotAssignment): boolean {
+    if (!assignment || !a) return false
+    if (assignment.type !== a.type || assignment.printerId !== a.printerId) return false
+    if (assignment.type === 'ams' && a.type === 'ams') {
+      return assignment.unitId === a.unitId && assignment.slotIndex === a.slotIndex
+    }
+    return assignment.type === 'direct'
+  }
+
+  function toggle(a: SlotAssignment) {
+    onSlotSelect(isSelected(a) ? null : a)
+  }
+
+  return (
+    <div className="rounded-lg border border-surface-border bg-surface-2/50 p-3 space-y-2.5">
+      <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">Printer assignment</p>
+
+      {/* Printer picker */}
+      <select
+        value={selectedPrinterId}
+        onChange={(e) => onPrinterChange(e.target.value ? Number(e.target.value) : '')}
+        className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none"
+      >
+        <option value="">— None / unassigned —</option>
+        {printers.map((p) => (
+          <option key={p.id} value={p.id}>{p.name}{p.model ? ` (${p.model})` : ''}</option>
+        ))}
+      </select>
+
+      {/* Slot grid */}
+      {selectedPrinter && (
+        <div className="space-y-2">
+          {sortedUnits.map((unit, unitIdx) => {
+            const letter = String.fromCharCode(65 + unitIdx)
+            const slots = [...unit.slots].sort((a, b) => a.slot_index - b.slot_index)
+            return (
+              <div key={unit.id}>
+                <p className="mb-1 text-xs text-gray-600">{unit.name}</p>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {slots.map((slot) => {
+                    const slotLabel = `${letter}${slot.slot_index + 1}`
+                    const a: SlotAssignment = { type: 'ams', printerId: selectedPrinter.id, unitId: unit.id, slotIndex: slot.slot_index }
+                    const sel = isSelected(a)
+                    const occupied = slot.spool_id !== null && !sel
+                    return (
+                      <button
+                        key={slot.slot_index}
+                        type="button"
+                        disabled={occupied}
+                        onClick={() => toggle(a)}
+                        title={occupied ? `Occupied by spool #${slot.spool_id}` : slotLabel}
+                        className={`rounded-lg border py-2 text-xs font-semibold transition-colors ${
+                          sel
+                            ? 'border-primary-500 bg-primary-600 text-white'
+                            : occupied
+                              ? 'border-surface-border bg-surface-3 text-gray-600 cursor-not-allowed'
+                              : 'border-surface-border bg-surface-2 text-gray-300 hover:border-primary-500/60 hover:text-white'
+                        }`}
+                      >
+                        {slotLabel}
+                        {occupied && <span className="block text-[9px] text-gray-600 font-normal">taken</span>}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+
+          {/* External slot */}
+          <div>
+            <p className="mb-1 text-xs text-gray-600">External</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {(() => {
+                const a: SlotAssignment = { type: 'direct', printerId: selectedPrinter.id }
+                const sel = isSelected(a)
+                const occupied = selectedPrinter.direct_spool_id !== null && !sel
+                return (
+                  <button
+                    type="button"
+                    disabled={occupied}
+                    onClick={() => toggle(a)}
+                    title={occupied ? `Occupied by spool #${selectedPrinter.direct_spool_id}` : 'External 1'}
+                    className={`rounded-lg border py-2 text-xs font-semibold transition-colors ${
+                      sel
+                        ? 'border-primary-500 bg-primary-600 text-white'
+                        : occupied
+                          ? 'border-surface-border bg-surface-3 text-gray-600 cursor-not-allowed'
+                          : 'border-surface-border bg-surface-2 text-gray-300 hover:border-primary-500/60 hover:text-white'
+                    }`}
+                  >
+                    Ext 1
+                    {occupied && <span className="block text-[9px] text-gray-600 font-normal">taken</span>}
+                  </button>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Summary */}
+      {assignment && (
+        <p className="text-xs text-primary-400">
+          {assignment.type === 'direct'
+            ? `${selectedPrinter?.name ?? ''} · External 1`
+            : (() => {
+                const unitIdx = sortedUnits.findIndex((u) => u.id === (assignment as { unitId: number }).unitId)
+                const letter = unitIdx >= 0 ? String.fromCharCode(65 + unitIdx) : '?'
+                return `${selectedPrinter?.name ?? ''} · ${letter}${(assignment as { slotIndex: number }).slotIndex + 1}`
+              })()
+          }
+        </p>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function EditSpoolPage() {
@@ -646,7 +791,7 @@ export default function EditSpoolPage() {
   const [colorHex3, setColorHex3]           = useState('')
   const [colorHex4, setColorHex4]           = useState('')
   const [activeColorSlot, setActiveColorSlot] = useState<1|2|3|4>(1)
-  const [status, setStatus]                 = useState<SpoolStatus>('active')
+  const [status, setStatus]                 = useState<SpoolStatus>('storage')
   const [weightUnit, setWeightUnit]         = useState<'g' | 'kg'>('g')
   const [submitError, setSubmitError]       = useState('')
   const [selectedBrand, setSelectedBrand]   = useState<BrandResponse | undefined>()
@@ -662,6 +807,12 @@ export default function EditSpoolPage() {
   })
   const { data: brands    = [] } = useQuery({ queryKey: ['brands'],    queryFn: () => brandsApi.list() })
   const { data: locations = [] } = useQuery({ queryKey: ['locations'], queryFn: locationsApi.list })
+  const { data: printers  = [] } = useQuery({ queryKey: ['printers'],  queryFn: printersApi.list })
+
+  // ── Printer assignment state ───────────────────────────────────────────────
+  const [assignment,        setAssignment]        = useState<SlotAssignment>(null)
+  const [initialAssignment, setInitialAssignment] = useState<SlotAssignment>(null)
+  const [assignPrinterId,   setAssignPrinterId]   = useState<number | ''>('')
 
   // Pull unique supplier names from the cached spools list (no extra network call)
   const cachedSpoolsData = queryClient.getQueryData<{ items: { supplier: string | null }[] }>(['spools', 'all'])
@@ -710,6 +861,30 @@ export default function EditSpoolPage() {
     if (spool.filament)            setSelectedFilament(spool.filament)
     setStatus(spool.status)
   }, [spool, reset])
+
+  // Detect current printer assignment for this spool
+  useEffect(() => {
+    if (!spool || !printers.length) return
+    const spoolId = spool.id
+    let found: SlotAssignment = null
+    outer: for (const printer of printers) {
+      if (printer.direct_spool_id === spoolId) {
+        found = { type: 'direct', printerId: printer.id }
+        break
+      }
+      for (const unit of printer.ams_units) {
+        for (const slot of unit.slots) {
+          if (slot.spool_id === spoolId) {
+            found = { type: 'ams', printerId: printer.id, unitId: unit.id, slotIndex: slot.slot_index }
+            break outer
+          }
+        }
+      }
+    }
+    setAssignment(found)
+    setInitialAssignment(found)
+    if (found) setAssignPrinterId(found.printerId)
+  }, [spool, printers])
 
   const watchedInitial    = watch('initial_weight') || 0
   const watchedUsed       = watch('used_weight')    || 0
@@ -763,8 +938,40 @@ export default function EditSpoolPage() {
 
       return updated
     },
-    onSuccess: () => {
+    onSuccess: async (saved) => {
+      // Apply printer assignment changes
+      const prev = initialAssignment
+      const next = assignment
+
+      const sameAssignment =
+        prev === next ||
+        (prev && next &&
+          prev.type === next.type &&
+          prev.printerId === next.printerId &&
+          (prev.type === 'direct' || (prev.type === 'ams' && next.type === 'ams' &&
+            prev.unitId === next.unitId && prev.slotIndex === next.slotIndex)))
+
+      if (!sameAssignment) {
+        // Clear old assignment
+        if (prev) {
+          if (prev.type === 'direct') {
+            await printersApi.assignDirectSpool(prev.printerId, null)
+          } else {
+            await printersApi.assignAmsSlot(prev.printerId, prev.unitId, prev.slotIndex, null)
+          }
+        }
+        // Set new assignment
+        if (next) {
+          if (next.type === 'direct') {
+            await printersApi.assignDirectSpool(next.printerId, saved.id)
+          } else {
+            await printersApi.assignAmsSlot(next.printerId, next.unitId, next.slotIndex, saved.id)
+          }
+        }
+      }
+
       queryClient.invalidateQueries({ queryKey: ['spools'] })
+      queryClient.invalidateQueries({ queryKey: ['printers'] })
       navigate('/spools')
     },
     onError: (err) => setSubmitError(getErrorMessage(err)),
@@ -999,6 +1206,20 @@ export default function EditSpoolPage() {
               </div>
             </div>
 
+            {/* Printer assignment — only when Active */}
+            {status === 'active' && (
+              <PrinterAssignmentPicker
+                printers={printers}
+                selectedPrinterId={assignPrinterId}
+                assignment={assignment}
+                onPrinterChange={(pid) => {
+                  setAssignPrinterId(pid)
+                  setAssignment(null)
+                }}
+                onSlotSelect={setAssignment}
+              />
+            )}
+
             {/* Initial weight */}
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-gray-300">
@@ -1034,7 +1255,7 @@ export default function EditSpoolPage() {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Spool tare weight (g)" type="number" step="1" placeholder="~250" {...register('spool_weight')} />
+              <Input label="Empty spool weight (g)" type="number" step="1" placeholder="~250" {...register('spool_weight')} />
               <Input label="Used weight (g)" type="number" step="1" placeholder="0" {...register('used_weight')} />
             </div>
 
@@ -1057,7 +1278,7 @@ export default function EditSpoolPage() {
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 -mt-1">
                   From the linked filament profile. To change these values, edit the filament profile on the{' '}
-                  <Link to="/filaments" className="text-primary-400 hover:text-primary-300">Filaments page</Link>.
+                  <Link to="/filaments" className="text-primary-400 hover:text-primary-300">Filament Profiles</Link>.
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {displayFilament.print_temp_min && displayFilament.print_temp_max && (

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { router } from './router'
 import { useAuthStore } from './stores/auth'
+import { useThemeApplier } from './hooks/useTheme'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -22,9 +23,15 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function ThemeApplier() {
+  useThemeApplier()
+  return null
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <ThemeApplier />
       <AuthInitializer>
         <RouterProvider router={router} />
       </AuthInitializer>

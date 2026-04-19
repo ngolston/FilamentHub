@@ -223,7 +223,7 @@ function MaterialDonut({ segments }: { segments: { label: string; pct: number; c
   )
 }
 
-function SpoolCard({ spool }: { spool: SpoolResponse }) {
+function SpoolCard({ spool, assignment }: { spool: SpoolResponse; assignment?: string }) {
   const color = spool.filament?.color_hex ?? '#6366f1'
   const pct   = spool.fill_percentage
   const st    = spoolStatus(pct)
@@ -256,12 +256,19 @@ function SpoolCard({ spool }: { spool: SpoolResponse }) {
           />
         </div>
 
-        <div className="mt-1.5 flex items-center justify-between">
+        <div className="mt-1.5 flex items-center justify-between gap-2">
           <span className="text-xs text-gray-500">{pct.toFixed(0)}%</span>
-          <span className={cn('flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full', STATUS_TEXT_CL[st], STATUS_BG_CL[st])}>
-            <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT_CL[st])} />
-            {STATUS_LABEL[st]}
-          </span>
+          {assignment ? (
+            <span className="flex items-center gap-1 text-xs font-medium text-primary-300 bg-primary-900/30 border border-primary-700/30 px-1.5 py-0.5 rounded-full truncate max-w-[140px]">
+              <PrinterIcon className="h-2.5 w-2.5 shrink-0" />
+              {assignment}
+            </span>
+          ) : (
+            <span className={cn('flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded-full', STATUS_TEXT_CL[st], STATUS_BG_CL[st])}>
+              <span className={cn('h-1.5 w-1.5 rounded-full', STATUS_DOT_CL[st])} />
+              {STATUS_LABEL[st]}
+            </span>
+          )}
         </div>
       </div>
     </div>
@@ -479,7 +486,7 @@ export default function DashboardPage() {
   })
   const { data: spoolsPage } = useQuery({
     queryKey: ['spools', 'dashboard'],
-    queryFn: () => spoolsApi.list({ status: 'active,storage', page_size: 12 }),
+    queryFn: () => spoolsApi.list({ status: 'active', page_size: 12 }),
   })
   const { data: allSpoolsPage } = useQuery({
     queryKey: ['spools', 'dashboard-all'],
@@ -517,9 +524,9 @@ export default function DashboardPage() {
     return days.map((d) => ({ label: d.label, grams: Math.round(d.grams) }))
   }, [jobsPage, today])
 
-  // Material donut: from active spools
+  // Material donut: from active + storage spools
   const materialData = useMemo(() => {
-    const spools = spoolsPage?.items ?? []
+    const spools = allSpoolsPage?.items ?? []
     const counts: Record<string, number> = {}
     for (const s of spools) {
       const mat = s.filament?.material ?? 'Unknown'
@@ -593,6 +600,102 @@ export default function DashboardPage() {
 
   const activeSpools = spoolsPage?.items ?? []
   const visiblePrinters = (printers ?? []).slice(0, 3)
+  const totalSpools = allSpoolsPage?.total ?? 0
+  const isNewUser = allSpoolsPage !== undefined && totalSpools === 0
+
+  // Map spoolId → assignment label e.g. "P1 · A2" or "P1 · External 1"
+  const spoolAssignments = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const printer of printers ?? []) {
+      const sortedUnits = [...printer.ams_units].sort((a, b) => a.unit_index - b.unit_index)
+      sortedUnits.forEach((unit, unitIdx) => {
+        const letter = String.fromCharCode(65 + unitIdx) // A, B, C…
+        for (const slot of unit.slots) {
+          if (slot.spool_id != null) {
+            map.set(slot.spool_id, `${printer.name} · ${letter}${slot.slot_index + 1}`)
+          }
+        }
+      })
+      if (printer.direct_spool_id != null) {
+        map.set(printer.direct_spool_id, `${printer.name} · External 1`)
+      }
+    }
+    return map
+  }, [printers])
+
+  // ── Onboarding: brand-new account with no spools ─────────────────────────
+  if (isNewUser) {
+    return (
+      <div className="flex min-h-full items-center justify-center p-8">
+        <div className="w-full max-w-lg text-center space-y-6">
+          {/* Icon */}
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500/20 to-accent-500/20 border border-primary-700/30">
+            <Package className="h-8 w-8 text-primary-400" />
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-bold text-white">Welcome to FilamentHub, {user?.display_name}!</h2>
+            <p className="mt-2 text-gray-400">
+              You don't have any spools yet. Get started by adding your first spool or importing from Spoolman.
+            </p>
+          </div>
+
+          {/* Steps */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+            {[
+              {
+                num: '1',
+                title: 'Add a filament profile',
+                desc: 'Create a reusable spec for each material you use.',
+                href: '/filaments',
+                color: 'bg-primary-600/20 text-primary-300 border-primary-700/30',
+              },
+              {
+                num: '2',
+                title: 'Add your first spool',
+                desc: 'Log a physical spool and link it to a profile.',
+                href: '/spools/new',
+                color: 'bg-accent-600/20 text-accent-300 border-accent-700/30',
+              },
+              {
+                num: '3',
+                title: 'Connect a printer',
+                desc: 'Track which filament is loaded on each machine.',
+                href: '/printers',
+                color: 'bg-emerald-600/20 text-emerald-300 border-emerald-700/30',
+              },
+            ].map((step) => (
+              <Link
+                key={step.num}
+                to={step.href}
+                className={`group flex flex-col gap-2 rounded-xl border p-4 transition-all hover:brightness-125 ${step.color}`}
+              >
+                <span className="text-xs font-bold uppercase tracking-wider opacity-60">Step {step.num}</span>
+                <p className="text-sm font-semibold">{step.title}</p>
+                <p className="text-xs opacity-70">{step.desc}</p>
+              </Link>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-center gap-3">
+            <Link
+              to="/spools/new"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary-600 hover:bg-primary-500 px-5 py-2.5 text-sm font-semibold text-white transition-colors"
+            >
+              <Package className="h-4 w-4" />
+              Add first spool
+            </Link>
+            <Link
+              to="/settings"
+              className="inline-flex items-center gap-2 rounded-lg border border-surface-border bg-surface-2 hover:bg-surface-3 px-5 py-2.5 text-sm font-medium text-gray-300 transition-colors"
+            >
+              Import from Spoolman
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="p-5 lg:p-7 space-y-6">
@@ -694,13 +797,13 @@ export default function DashboardPage() {
           <CardHeader>
             <div>
               <CardTitle>By Material</CardTitle>
-              <p className="text-xs text-gray-500 mt-0.5">Active spool mix</p>
+              <p className="text-xs text-gray-500 mt-0.5">Active &amp; Storage</p>
             </div>
             <Layers className="h-4 w-4 text-primary-400" />
           </CardHeader>
           {materialData.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-6 text-gray-600 text-xs">
-              No active spools
+              No active or storage spools
             </div>
           ) : (
             <MaterialDonut segments={materialData} />
@@ -734,7 +837,7 @@ export default function DashboardPage() {
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {activeSpools.map((spool) => (
-              <SpoolCard key={spool.id} spool={spool} />
+              <SpoolCard key={spool.id} spool={spool} assignment={spoolAssignments.get(spool.id)} />
             ))}
           </div>
         )}

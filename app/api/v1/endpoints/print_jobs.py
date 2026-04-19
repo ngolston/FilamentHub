@@ -3,17 +3,25 @@
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.v1.deps import get_current_user, require_editor
 from app.db.session import get_db
-from app.models.models import PrintJob, Spool, User
+from app.models.models import FilamentProfile, PrintJob, Printer, Spool, User
 from app.schemas.schemas import (
+    CostAnalytics,
+    DailyUsagePoint,
+    MaterialAnalytics,
+    MaterialBreakdown,
+    MaterialCost,
+    MonthlySpend,
     PaginatedResponse,
     PrintJobCreate,
     PrintJobResponse,
+    PrinterAnalytics,
+    PrinterStat,
     SpoolForecast,
     UsageSummary,
 )
@@ -202,3 +210,256 @@ async def runout_forecast(
 
     forecasts.sort(key=lambda f: (f.days_remaining or 9999))
     return forecasts
+
+
+# ── Daily usage breakdown ─────────────────────────────────────────────────────
+
+@analytics_router.get("/daily", response_model=list[DailyUsagePoint])
+async def daily_usage(
+    days: int = Query(30, ge=7, le=365),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    since = datetime.now(UTC) - timedelta(days=days)
+
+    rows = (await db.execute(
+        select(
+            func.strftime("%Y-%m-%d", PrintJob.finished_at).label("date"),
+            func.sum(PrintJob.filament_used_g).label("grams"),
+        )
+        .where(PrintJob.user_id == current_user.id, PrintJob.finished_at >= since)
+        .group_by(text("date"))
+        .order_by(text("date"))
+    )).all()
+
+    day_map = {r.date: float(r.grams) for r in rows}
+    now = datetime.now(UTC)
+    points: list[DailyUsagePoint] = []
+    cumulative = 0.0
+    for i in range(days, -1, -1):
+        d = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+        g = day_map.get(d, 0.0)
+        cumulative += g
+        points.append(DailyUsagePoint(date=d, grams=g, cumulative=cumulative))
+
+    return points
+
+
+# ── By-material breakdown ─────────────────────────────────────────────────────
+
+@analytics_router.get("/by-material", response_model=MaterialAnalytics)
+async def material_analytics(
+    days: int = Query(30, ge=7, le=365),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    since = datetime.now(UTC) - timedelta(days=days)
+    mat_col = func.coalesce(FilamentProfile.material, "Unknown")
+
+    breakdown_rows = (await db.execute(
+        select(mat_col.label("material"), func.sum(PrintJob.filament_used_g).label("total_grams"))
+        .select_from(PrintJob)
+        .outerjoin(Spool, PrintJob.spool_id == Spool.id)
+        .outerjoin(FilamentProfile, Spool.filament_id == FilamentProfile.id)
+        .where(PrintJob.user_id == current_user.id, PrintJob.finished_at >= since)
+        .group_by(mat_col)
+        .order_by(func.sum(PrintJob.filament_used_g).desc())
+    )).all()
+
+    total_g = sum(float(r.total_grams) for r in breakdown_rows) or 1.0
+    breakdown = [
+        MaterialBreakdown(
+            material=r.material,
+            total_grams=float(r.total_grams),
+            pct=round(float(r.total_grams) / total_g * 100, 1),
+            avg_daily_g=round(float(r.total_grams) / days, 1),
+        )
+        for r in breakdown_rows
+    ]
+    materials = [b.material for b in breakdown]
+
+    # Weekly pivot — [{week_label, PLA: x, PETG: y, …}]
+    weekly_rows = (await db.execute(
+        select(
+            func.strftime("%Y-%W", PrintJob.finished_at).label("week"),
+            mat_col.label("material"),
+            func.sum(PrintJob.filament_used_g).label("grams"),
+        )
+        .select_from(PrintJob)
+        .outerjoin(Spool, PrintJob.spool_id == Spool.id)
+        .outerjoin(FilamentProfile, Spool.filament_id == FilamentProfile.id)
+        .where(PrintJob.user_id == current_user.id, PrintJob.finished_at >= since)
+        .group_by(text("week"), mat_col)
+        .order_by(text("week"))
+    )).all()
+
+    week_dict: dict[str, dict] = {}
+    for row in weekly_rows:
+        if row.week not in week_dict:
+            week_dict[row.week] = {"week": row.week}
+        week_dict[row.week][row.material] = float(row.grams)
+
+    weekly: list[dict] = []
+    for wk, data in sorted(week_dict.items()):
+        try:
+            yr, wn = wk.split("-")
+            dt = datetime.strptime(f"{yr}-W{wn}-1", "%Y-W%W-%w")
+            data = {**data, "week": dt.strftime("%b %-d")}
+        except Exception:
+            pass
+        weekly.append(data)
+
+    return MaterialAnalytics(breakdown=breakdown, weekly=weekly, materials=materials)
+
+
+# ── By-printer breakdown ──────────────────────────────────────────────────────
+
+@analytics_router.get("/by-printer", response_model=PrinterAnalytics)
+async def printer_analytics(
+    days: int = Query(30, ge=7, le=365),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    since = datetime.now(UTC) - timedelta(days=days)
+    printer_name_col = func.coalesce(Printer.name, "Unknown")
+    mat_col = func.coalesce(FilamentProfile.material, "Unknown")
+
+    stat_rows = (await db.execute(
+        select(
+            Printer.id.label("printer_id"),
+            printer_name_col.label("printer_name"),
+            func.sum(PrintJob.filament_used_g).label("total_grams"),
+        )
+        .select_from(PrintJob)
+        .outerjoin(Printer, PrintJob.printer_id == Printer.id)
+        .where(PrintJob.user_id == current_user.id, PrintJob.finished_at >= since)
+        .group_by(Printer.id, printer_name_col)
+        .order_by(func.sum(PrintJob.filament_used_g).desc())
+    )).all()
+
+    total_g = sum(float(r.total_grams or 0) for r in stat_rows) or 1.0
+
+    stats: list[PrinterStat] = []
+    for r in stat_rows:
+        top_mat_rows = (await db.execute(
+            select(mat_col.label("material"), func.sum(PrintJob.filament_used_g).label("g"))
+            .select_from(PrintJob)
+            .outerjoin(Spool, PrintJob.spool_id == Spool.id)
+            .outerjoin(FilamentProfile, Spool.filament_id == FilamentProfile.id)
+            .where(
+                PrintJob.user_id == current_user.id,
+                PrintJob.printer_id == r.printer_id,
+                PrintJob.finished_at >= since,
+            )
+            .group_by(mat_col)
+            .order_by(func.sum(PrintJob.filament_used_g).desc())
+            .limit(3)
+        )).all()
+        stats.append(PrinterStat(
+            printer_id=r.printer_id,
+            printer_name=r.printer_name,
+            total_grams=float(r.total_grams or 0),
+            pct=round(float(r.total_grams or 0) / total_g * 100, 1),
+            top_materials=[row.material for row in top_mat_rows],
+        ))
+
+    # Daily per-printer pivot
+    daily_rows = (await db.execute(
+        select(
+            func.strftime("%Y-%m-%d", PrintJob.finished_at).label("date"),
+            printer_name_col.label("printer_name"),
+            func.sum(PrintJob.filament_used_g).label("grams"),
+        )
+        .select_from(PrintJob)
+        .outerjoin(Printer, PrintJob.printer_id == Printer.id)
+        .where(PrintJob.user_id == current_user.id, PrintJob.finished_at >= since)
+        .group_by(text("date"), printer_name_col)
+        .order_by(text("date"))
+    )).all()
+
+    date_dict: dict[str, dict] = {}
+    for row in daily_rows:
+        if row.date not in date_dict:
+            date_dict[row.date] = {"date": row.date}
+        date_dict[row.date][row.printer_name] = float(row.grams)
+
+    return PrinterAnalytics(stats=stats, daily=sorted(date_dict.values(), key=lambda d: d["date"]))
+
+
+# ── Cost tracking ─────────────────────────────────────────────────────────────
+
+@analytics_router.get("/cost", response_model=CostAnalytics)
+async def cost_analytics(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    # Total invested + weight (for blended $/kg)
+    agg = (await db.execute(
+        select(
+            func.coalesce(func.sum(Spool.purchase_price), 0).label("total"),
+            func.coalesce(func.sum(Spool.initial_weight), 0).label("weight"),
+        )
+        .where(Spool.owner_id == current_user.id, Spool.purchase_price.isnot(None))
+    )).one()
+    total_invested = float(agg.total)
+    total_weight_g = float(agg.weight)
+    blended = (total_invested / (total_weight_g / 1000)) if total_weight_g > 0 else 0.0
+
+    # This month spend
+    now = datetime.now(UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    this_month = float((await db.execute(
+        select(func.coalesce(func.sum(Spool.purchase_price), 0))
+        .where(Spool.owner_id == current_user.id, Spool.registered >= month_start)
+    )).scalar_one() or 0)
+
+    # Monthly history (last 12 months)
+    twelve_ago = now - timedelta(days=365)
+    monthly_rows = (await db.execute(
+        select(
+            func.strftime("%Y-%m", Spool.registered).label("month"),
+            func.sum(Spool.purchase_price).label("spend"),
+        )
+        .where(
+            Spool.owner_id == current_user.id,
+            Spool.purchase_price.isnot(None),
+            Spool.registered >= twelve_ago,
+        )
+        .group_by(text("month"))
+        .order_by(text("month"))
+    )).all()
+    monthly_history = [MonthlySpend(month=r.month, spend=float(r.spend or 0)) for r in monthly_rows]
+    projected = (sum(m.spend for m in monthly_history) / len(monthly_history)) if monthly_history else 0.0
+
+    # Cost per material
+    mat_col = func.coalesce(FilamentProfile.material, "Unknown")
+    mat_rows = (await db.execute(
+        select(
+            mat_col.label("material"),
+            func.sum(Spool.purchase_price).label("total_spent"),
+            func.sum(Spool.initial_weight).label("total_weight"),
+        )
+        .select_from(Spool)
+        .outerjoin(FilamentProfile, Spool.filament_id == FilamentProfile.id)
+        .where(Spool.owner_id == current_user.id, Spool.purchase_price.isnot(None))
+        .group_by(mat_col)
+        .order_by(func.sum(Spool.purchase_price).desc())
+    )).all()
+    cost_by_material = [
+        MaterialCost(
+            material=r.material,
+            cost_per_kg=round(float(r.total_spent or 0) / (float(r.total_weight or 1) / 1000), 2),
+            total_spent=float(r.total_spent or 0),
+        )
+        for r in mat_rows
+        if (r.total_weight or 0) > 0
+    ]
+
+    return CostAnalytics(
+        total_invested=total_invested,
+        blended_cost_per_kg=round(blended, 2),
+        this_month_spend=this_month,
+        projected_monthly=round(projected, 2),
+        monthly_history=monthly_history,
+        cost_by_material=cost_by_material,
+    )
