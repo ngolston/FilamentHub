@@ -3,11 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Search, Plus, Package, LayoutGrid, List, X,
-  CheckSquare, Download, QrCode, Trash2,
+  CheckSquare, Trash2,
   Printer, MapPin, Scale, Tag, Calendar, DollarSign,
-  Thermometer, Droplets, Gauge, Hash, Link2, FileText, Pencil,
-  SlidersHorizontal, Bookmark, BookmarkCheck, Columns3,
-  Archive, RotateCcw, PackageOpen,
+  Thermometer, Droplets, Gauge, Hash, Link2, Pencil,
+  Bookmark, BookmarkCheck, Columns3,
+  Archive, PackageOpen,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { spoolsApi } from '@/api/spools'

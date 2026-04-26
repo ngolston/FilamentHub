@@ -9,7 +9,7 @@ import {
 import { spoolsApi } from '@/api/spools'
 import { analyticsApi } from '@/api/analytics'
 import { formatWeight, formatCurrency } from '@/utils/format'
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { cn } from '@/utils/cn'
 import type { SpoolResponse } from '@/types/api'

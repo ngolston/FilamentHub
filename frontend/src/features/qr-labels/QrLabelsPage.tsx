@@ -8,7 +8,7 @@ import { spoolsApi } from '@/api/spools'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Toggle } from '@/components/ui/Toggle'
-import { SpoolLabel, LABEL_PX, DEFAULT_FIELDS } from './SpoolLabel'
+import { SpoolLabel, DEFAULT_FIELDS } from './SpoolLabel'
 import type { LabelTemplate, QrEncoding, LabelFields } from './SpoolLabel'
 import type { SpoolResponse } from '@/types/api'
 

@@ -12,11 +12,6 @@ import type { CommunityFilament } from '@/api/community'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const MATERIALS = [
-  'PLA', 'PLA+', 'PETG', 'ABS', 'ASA', 'TPU', 'PA', 'Nylon', 'PC',
-  'PLA-CF', 'PETG-CF', 'ABS-CF10', 'Silk', 'Wood', 'Flexible (TPU)',
-]
-
 const COLOR_FAMILIES = [
   { key: 'red',    hex: '#EF4444', label: 'Red'    },
   { key: 'orange', hex: '#F97316', label: 'Orange' },
@@ -570,7 +565,6 @@ function DetailModal({ f, onClose, onImport }: { f: CommunityFilament; onClose: 
             <Button className="flex-1" onClick={onImport}>+ Import to inventory</Button>
             <Button
               variant="secondary"
-              as="a"
               onClick={() => window.open('https://github.com/Donkie/SpoolmanDB', '_blank')}
             >
               <ExternalLink className="h-4 w-4" /> GitHub

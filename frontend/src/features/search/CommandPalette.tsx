@@ -351,7 +351,7 @@ export function CommandPalette({ isOpen, onClose }: Props) {
 
   const { data: brands = [] } = useQuery({
     queryKey: ['brands'],
-    queryFn:  brandsApi.list,
+    queryFn:  () => brandsApi.list(),
     enabled:  isOpen,
     staleTime: 60_000,
   })

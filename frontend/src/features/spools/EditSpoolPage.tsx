@@ -476,7 +476,7 @@ interface PreviewProps {
 }
 
 function SpoolPreview({
-  brandName, filamentName, material, colorHex, colorHex2, colorHex3, colorHex4,
+  brandName, filamentName, material, colorHex, colorHex2: _colorHex2, colorHex3: _colorHex3, colorHex4: _colorHex4,
   diameter, initialWeight, usedWeight, printTempMin, printTempMax,
 }: PreviewProps) {
   const remaining    = Math.max(0, (initialWeight || 0) - (usedWeight || 0))
@@ -488,8 +488,6 @@ function SpoolPreview({
   const statusColor   = pct > 25 ? '#22c55e' : pct > 10 ? '#eab308' : '#ef4444'
   const statusLabel   = pct > 25 ? 'OK' : pct > 10 ? 'Low' : 'Critical'
   const displayName   = [brandName, filamentName].filter(Boolean).join(' ') || 'Unnamed spool'
-
-  const activeColors = [colorHex, colorHex2, colorHex3, colorHex4].filter((c): c is string => Boolean(c) && /^#[0-9A-Fa-f]{6}$/.test(c))
 
   return (
     <div className="rounded-2xl border border-surface-border bg-surface-1 p-5 flex flex-col gap-4">

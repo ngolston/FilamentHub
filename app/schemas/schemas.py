@@ -370,6 +370,7 @@ class PrinterResponse(OrmBase):
     model: str | None
     serial_number: str | None = None
     connection_type: str
+    api_url: str | None = None
     status: str
     notes: str | None
     created_at: datetime
@@ -398,6 +399,7 @@ class PrintJobResponse(OrmBase):
     printer_id: int | None
     printer: PrinterResponse | None
     spool_id: int | None
+    spool: AmsSpoolSummary | None = None
     file_name: str | None
     filament_used_g: float
     duration_seconds: int | None

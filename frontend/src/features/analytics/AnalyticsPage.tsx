@@ -196,7 +196,7 @@ function OverviewTab({ days }: { days: number }) {
                   />
                   <Tooltip
                     {...tooltipStyle}
-                    formatter={(v: number) => [`${v.toFixed(1)} g`, 'Used']}
+                    formatter={(v) => [`${(v as number).toFixed(1)} g`, 'Used']}
                     labelFormatter={(d) => format(parseISO(String(d)), 'MMM d, yyyy')}
                   />
                   <Bar dataKey="grams" fill="url(#barGrad)" radius={[3, 3, 0, 0]} maxBarSize={24} />
@@ -225,7 +225,7 @@ function OverviewTab({ days }: { days: number }) {
                   />
                   <Tooltip
                     {...tooltipStyle}
-                    formatter={(v: number) => [formatWeight(v), 'Total']}
+                    formatter={(v) => [formatWeight(v as number), 'Total']}
                     labelFormatter={(d) => format(parseISO(String(d)), 'MMM d, yyyy')}
                   />
                   <Line
@@ -260,7 +260,7 @@ function OverviewTab({ days }: { days: number }) {
                   </Pie>
                   <Tooltip
                     {...tooltipStyle}
-                    formatter={(v: number) => [formatWeight(v)]}
+                    formatter={(v) => [formatWeight(v as number)]}
                   />
                 </PieChart>
               </ResponsiveContainer>
@@ -313,7 +313,7 @@ function MaterialTab({ days }: { days: number }) {
               <YAxis tickFormatter={(v) => `${v}g`} tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
               <Tooltip
                 {...tooltipStyle}
-                formatter={(v: number, name: string) => [`${v.toFixed(1)} g`, name]}
+                formatter={(v, name) => [`${(v as number).toFixed(1)} g`, name as string]}
               />
               <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af', paddingTop: 8 }} />
               {topMats.map((m) => (
@@ -355,7 +355,7 @@ function MaterialTab({ days }: { days: number }) {
                     <Line type="monotone" dataKey="g" stroke={MAT_COLOR(b.material)} strokeWidth={1.5} dot={false} />
                     <Tooltip
                       {...tooltipStyle}
-                      formatter={(v: number) => [`${v.toFixed(1)} g`, b.material]}
+                      formatter={(v) => [`${(v as number).toFixed(1)} g`, b.material]}
                       labelFormatter={(l) => String(l)}
                     />
                   </LineChart>
@@ -447,7 +447,7 @@ function PrinterTab({ days }: { days: number }) {
               <YAxis tickFormatter={(v) => `${v}g`} tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} />
               <Tooltip
                 {...tooltipStyle}
-                formatter={(v: number, name: string) => [`${v.toFixed(1)} g`, name]}
+                formatter={(v, name) => [`${(v as number).toFixed(1)} g`, name as string]}
                 labelFormatter={(d) => format(parseISO(String(d)), 'MMM d, yyyy')}
               />
               <Legend wrapperStyle={{ fontSize: 11, color: '#9ca3af', paddingTop: 8 }} />
@@ -540,8 +540,8 @@ function CostTab() {
                 />
                 <Tooltip
                   {...tooltipStyle}
-                  formatter={(v: number) => [formatCurrency(v), 'Spend']}
-                  labelFormatter={fmtMonth}
+                  formatter={(v) => [formatCurrency(v as number), 'Spend']}
+                  labelFormatter={(m) => fmtMonth(String(m))}
                 />
                 <Bar dataKey="spend" fill="#10b981" radius={[3, 3, 0, 0]} maxBarSize={36} />
               </BarChart>

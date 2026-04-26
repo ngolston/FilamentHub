@@ -2,10 +2,9 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Bell, BellOff, Plus, Trash2, Pencil, AlertTriangle,
-  Package, CheckCircle, ChevronRight,
+  Package, CheckCircle,
 } from 'lucide-react'
 import { alertsApi } from '@/api/alerts'
-import { Card } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Spinner } from '@/components/ui/Spinner'
@@ -281,7 +280,7 @@ export default function AlertsPage() {
               <p className="text-sm font-medium text-gray-300">No alert rules yet</p>
               <p className="text-xs text-gray-500 mt-0.5">Create a rule to get notified when spools run low.</p>
             </div>
-            <Button variant="outline" onClick={() => setModalRule(null)}>
+            <Button variant="secondary" onClick={() => setModalRule(null)}>
               <Plus className="h-4 w-4 mr-1.5" />
               Create first rule
             </Button>

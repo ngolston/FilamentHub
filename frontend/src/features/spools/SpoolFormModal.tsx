@@ -251,7 +251,7 @@ export function SpoolFormModal({ spool, prefillFilamentId, onClose }: Props) {
 
   const { data: brands = [] } = useQuery({
     queryKey: ['brands'],
-    queryFn: brandsApi.list,
+    queryFn: () => brandsApi.list(),
   })
 
   const defaultFilamentId = spool?.filament?.id ?? prefillFilamentId

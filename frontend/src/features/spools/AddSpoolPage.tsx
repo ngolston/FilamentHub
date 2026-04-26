@@ -601,7 +601,7 @@ export default function AddSpoolPage() {
   const [weightUnit, setWeightUnit] = useState<'g' | 'kg'>('g')
   const [submitError, setSubmitError] = useState('')
   const [selectedBrand, setSelectedBrand] = useState<BrandResponse | undefined>()
-  const [selectedLocation, setSelectedLocation] = useState<LocationResponse | undefined>()
+  const [, setSelectedLocation] = useState<LocationResponse | undefined>()
   const [filamentName, setFilamentName] = useState('')
 
   // ── Queries ────────────────────────────────────────────────────────────────
@@ -691,7 +691,7 @@ export default function AddSpoolPage() {
 
       return spool
     },
-    onSuccess: (spool, { status }) => {
+    onSuccess: (_, { status }) => {
       queryClient.invalidateQueries({ queryKey: ['spools'] })
       if (status === 'archived') {
         navigate('/spools')
@@ -718,10 +718,6 @@ export default function AddSpoolPage() {
     if (fp.drying_temp    !== null && fp.drying_temp    !== undefined) setValue('drying_temp',    fp.drying_temp)
     if (fp.drying_duration !== null && fp.drying_duration !== undefined) setValue('drying_duration', fp.drying_duration)
   }, [setValue])
-
-  const displayInitialWeight = weightUnit === 'kg'
-    ? (watchedInitial / 1000).toFixed(3)
-    : watchedInitial
 
   return (
     <div className="min-h-screen bg-surface pb-24">

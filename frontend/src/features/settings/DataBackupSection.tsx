@@ -5,6 +5,7 @@ import {
   Database, CheckCircle2,
 } from 'lucide-react'
 import { dataApi } from '@/api/data'
+import type { ImportResult } from '@/types/api'
 import { spoolsApi } from '@/api/spools'
 import { useAuthStore } from '@/stores/auth'
 import { useLocalSetting } from '@/hooks/useLocalSetting'
@@ -30,7 +31,7 @@ export function DataBackupSection() {
   const spoolmanRef = useRef<HTMLInputElement>(null)
   const user        = useAuthStore((s) => s.user)
 
-  const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null)
+  const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [pdfError,     setPdfError]     = useState<string | null>(null)
 
   const [autoBackup,  setAutoBackup]  = useLocalSetting('fh_auto_backup',  false)

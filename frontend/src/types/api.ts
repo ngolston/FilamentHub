@@ -248,6 +248,9 @@ export interface SpoolCreate {
   purchase_price?: number
   supplier?: string
   product_url?: string
+  extra_color_hex_2?: string | null
+  extra_color_hex_3?: string | null
+  extra_color_hex_4?: string | null
   status?: SpoolStatus
   notes?: string
 }
@@ -287,6 +290,7 @@ export interface PrinterResponse {
   model: string | null
   serial_number: string | null
   connection_type: PrinterConnectionType
+  api_url: string | null
   status: PrinterStatus
   notes: string | null
   created_at: string
@@ -348,6 +352,7 @@ export interface PrintJobResponse {
   id: number
   printer: PrinterResponse | null
   spool_id: number | null
+  spool: AmsSpoolSummary | null
   file_name: string
   filament_used_g: number
   duration_seconds: number | null
@@ -414,7 +419,7 @@ export interface SpoolForecast {
   avg_daily_g: number
   days_remaining: number | null
   estimated_runout: string | null
-  severity: AlertSeverity
+  severity: 'ok' | 'warning' | 'critical'
 }
 
 // ─── Alert Rules ──────────────────────────────────────────────────────────────
