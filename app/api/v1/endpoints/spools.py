@@ -155,7 +155,7 @@ async def upload_photo(
         raise HTTPException(status_code=400, detail="Only JPEG, PNG, and WebP images are accepted")
 
     result = await db.execute(
-        select(Spool).where(Spool.id == spool_id, Spool.owner_id == current_user.id)
+        _spool_query(current_user.id).where(Spool.id == spool_id)
     )
     spool = result.scalar_one_or_none()
     if not spool:
@@ -163,6 +163,8 @@ async def upload_photo(
 
     url = await upload_spool_photo(spool_id, file)
     spool.photo_url = url
+    await db.flush()
+    await db.refresh(spool, attribute_names=["filament", "brand", "location"])
     return spool
 
 

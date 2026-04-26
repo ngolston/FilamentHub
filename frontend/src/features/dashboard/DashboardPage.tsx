@@ -686,7 +686,7 @@ export default function DashboardPage() {
               Add first spool
             </Link>
             <Link
-              to="/settings"
+              to="/community"
               className="inline-flex items-center gap-2 rounded-lg border border-surface-border bg-surface-2 hover:bg-surface-3 px-5 py-2.5 text-sm font-medium text-gray-300 transition-colors"
             >
               Import from Spoolman

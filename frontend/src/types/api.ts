@@ -241,6 +241,7 @@ export interface SpoolCreate {
   location_id?: number
   name?: string
   lot_nr?: string
+  photo_url?: string
   initial_weight: number
   spool_weight?: number
   used_weight?: number
@@ -255,7 +256,7 @@ export interface SpoolCreate {
   notes?: string
 }
 
-export type SpoolUpdate = Partial<SpoolCreate>
+export type SpoolUpdate = Partial<SpoolCreate> & { photo_url?: string | null }
 
 export interface SpoolFilters extends PaginationParams {
   status?: SpoolStatus | string   // single value or comma-separated list e.g. 'active,storage'

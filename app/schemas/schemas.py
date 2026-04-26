@@ -232,6 +232,7 @@ class SpoolCreate(BaseModel):
     location_id: int | None = None
     name: str | None = None
     lot_nr: str | None = None
+    photo_url: str | None = None
     initial_weight: Annotated[float, Field(gt=0)]
     spool_weight: float | None = None
     used_weight: float = 0.0
@@ -252,6 +253,7 @@ class SpoolUpdate(BaseModel):
     location_id: int | None = None
     name: str | None = None
     lot_nr: str | None = None
+    photo_url: str | None = None
     initial_weight: float | None = None
     spool_weight: float | None = None
     used_weight: float | None = None

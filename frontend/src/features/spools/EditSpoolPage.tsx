@@ -784,6 +784,7 @@ export default function EditSpoolPage() {
   const queryClient  = useQueryClient()
 
   const [photo, setPhoto]                   = useState<File | null>(null)
+  const [photoUrl, setPhotoUrl]             = useState('')
   const [colorHex, setColorHex]             = useState('#6366F1')
   const [colorHex2, setColorHex2]           = useState('')
   const [colorHex3, setColorHex3]           = useState('')
@@ -857,6 +858,7 @@ export default function EditSpoolPage() {
     if (spool.brand)               setSelectedBrand(spool.brand)
     if (spool.location)            setSelectedLocation(spool.location)
     if (spool.filament)            setSelectedFilament(spool.filament)
+    setPhotoUrl(spool.photo_url ?? '')
     setStatus(spool.status)
   }, [spool, reset])
 
@@ -918,6 +920,7 @@ export default function EditSpoolPage() {
         location_id:    data.location_id  || undefined,
         name:           data.name         || undefined,
         lot_nr:         data.lot_nr       || undefined,
+        photo_url:      !photo ? (photoUrl || null) : undefined,
         initial_weight: weightG,
         spool_weight:   data.spool_weight || undefined,
         used_weight:    data.used_weight  ?? 0,
@@ -1186,7 +1189,29 @@ export default function EditSpoolPage() {
 
           {/* Section 2: Photo */}
           <Section label="Photo">
-            <PhotoDropzone file={photo} onChange={setPhoto} existingUrl={spool.photo_url} />
+            <PhotoDropzone
+              file={photo}
+              onChange={(f) => { setPhoto(f); setPhotoUrl('') }}
+              existingUrl={photoUrl}
+            />
+            <div className="mt-3">
+              <p className="mb-1.5 text-xs text-gray-500">Or enter a photo URL</p>
+              <div className="relative">
+                <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-500 pointer-events-none" />
+                <input
+                  type="url"
+                  value={photoUrl}
+                  onChange={(e) => { setPhotoUrl(e.target.value); if (e.target.value) setPhoto(null) }}
+                  placeholder="https://example.com/photo.jpg"
+                  className="w-full rounded-lg border border-surface-border bg-surface-2 pl-8 pr-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-primary-500 focus:outline-none"
+                />
+              </div>
+              {photoUrl && (() => {
+                try { new URL(photoUrl); return (
+                  <img src={photoUrl} alt="Preview" className="mt-2 h-28 w-full rounded-lg object-cover border border-surface-border" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                )} catch { return null }
+              })()}
+            </div>
           </Section>
 
           {/* Section 3: Weight & Stock */}
