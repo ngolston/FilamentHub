@@ -15,20 +15,24 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "webhooks",
-        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("owner_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("name", sa.String(100), nullable=False),
-        sa.Column("url", sa.String(500), nullable=False),
-        sa.Column("events", sa.String(300), nullable=False, server_default=""),
-        sa.Column("secret", sa.String(200), nullable=True),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("last_triggered_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("last_status_code", sa.Integer(), nullable=True),
-    )
-    op.create_index("ix_webhooks_owner_id", "webhooks", ["owner_id"])
+    conn = op.get_bind()
+    existing = {row[0] for row in conn.execute(sa.text("SELECT name FROM sqlite_master WHERE type='table'"))}
+
+    if "webhooks" not in existing:
+        op.create_table(
+            "webhooks",
+            sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+            sa.Column("owner_id", sa.String(36), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("name", sa.String(100), nullable=False),
+            sa.Column("url", sa.String(500), nullable=False),
+            sa.Column("events", sa.String(300), nullable=False, server_default=""),
+            sa.Column("secret", sa.String(200), nullable=True),
+            sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
+            sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+            sa.Column("last_triggered_at", sa.DateTime(timezone=True), nullable=True),
+            sa.Column("last_status_code", sa.Integer(), nullable=True),
+        )
+        op.create_index("ix_webhooks_owner_id", "webhooks", ["owner_id"])
 
 
 def downgrade() -> None:
