@@ -88,6 +88,7 @@ class UserResponse(OrmBase):
     timezone: str
     discord_webhook_url: str | None
     created_at: datetime
+    updated_at: datetime
     last_login_at: datetime | None
 
 

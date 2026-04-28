@@ -3,7 +3,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, Search, Trash2, Upload, X } from 'lucide-react'
+import { Camera, Link2, Search, Trash2, Upload, X } from 'lucide-react'
 import { spoolsApi } from '@/api/spools'
 import { filamentsApi } from '@/api/filaments'
 import { brandsApi } from '@/api/brands'
@@ -140,11 +140,15 @@ function PhotoSection({
   currentUrl,
   pendingFile,
   onPendingChange,
+  photoUrl,
+  onPhotoUrlChange,
 }: {
   spoolId: number | undefined
   currentUrl: string | null | undefined
   pendingFile: File | null
   onPendingChange: (f: File | null) => void
+  photoUrl: string
+  onPhotoUrlChange: (url: string) => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const qc = useQueryClient()
@@ -156,13 +160,13 @@ function PhotoSection({
 
   const previewUrl = pendingFile
     ? URL.createObjectURL(pendingFile)
-    : currentUrl ?? null
+    : photoUrl || currentUrl || null
 
   function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0] ?? null
     if (!file) return
     onPendingChange(file)
-    // If editing an existing spool, upload immediately
+    onPhotoUrlChange('')
     if (spoolId) {
       uploadMutation.mutate({ id: spoolId, file })
     }
@@ -201,7 +205,7 @@ function PhotoSection({
           {previewUrl && (
             <button
               type="button"
-              onClick={() => onPendingChange(null)}
+              onClick={() => { onPendingChange(null); onPhotoUrlChange('') }}
               className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-400 transition-colors text-left"
             >
               <Trash2 className="h-3 w-3" />
@@ -219,6 +223,26 @@ function PhotoSection({
           )}
           <p className="text-xs text-gray-600">JPEG, PNG or WebP. Max 10 MB.</p>
         </div>
+      </div>
+
+      {/* URL input */}
+      <div>
+        <p className="mb-1.5 text-xs text-gray-500">Or enter a photo URL</p>
+        <div className="relative">
+          <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-500 pointer-events-none" />
+          <input
+            type="url"
+            value={photoUrl}
+            onChange={(e) => { onPhotoUrlChange(e.target.value); if (e.target.value) onPendingChange(null) }}
+            placeholder="https://example.com/photo.jpg"
+            className="w-full rounded-lg border border-surface-border bg-surface-2 pl-8 pr-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-primary-500 focus:outline-none"
+          />
+        </div>
+        {photoUrl && (() => {
+          try { new URL(photoUrl); return (
+            <img src={photoUrl} alt="Preview" className="mt-2 h-28 w-full rounded-lg object-cover border border-surface-border" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          )} catch { return null }
+        })()}
       </div>
 
       <input
@@ -257,6 +281,7 @@ export function SpoolFormModal({ spool, prefillFilamentId, onClose }: Props) {
   const defaultFilamentId = spool?.filament?.id ?? prefillFilamentId
   const [filamentId, setFilamentId] = useState<number | undefined>(defaultFilamentId)
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null)
+  const [photoUrl, setPhotoUrl] = useState(spool?.photo_url ?? '')
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -291,6 +316,7 @@ export function SpoolFormModal({ spool, prefillFilamentId, onClose }: Props) {
         supplier:       data.supplier       || undefined,
         product_url:    data.product_url    || undefined,
         notes:          data.notes          || undefined,
+        photo_url:      !pendingPhoto ? (photoUrl || null) : undefined,
       }
       const saved = isEdit
         ? await spoolsApi.update(spool.id, payload)
@@ -326,6 +352,8 @@ export function SpoolFormModal({ spool, prefillFilamentId, onClose }: Props) {
             currentUrl={spool?.photo_url}
             pendingFile={pendingPhoto}
             onPendingChange={setPendingPhoto}
+            photoUrl={photoUrl}
+            onPhotoUrlChange={setPhotoUrl}
           />
 
           {/* Filament profile picker */}
