@@ -101,7 +101,10 @@ export function SpoolGrid({
                     }
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-white">{name}</p>
+                    <div className="flex items-baseline gap-1.5 min-w-0">
+                      <p className="truncate text-sm font-semibold text-white">{name}</p>
+                      <span className="shrink-0 text-xs text-gray-600 tabular-nums">#{spool.id}</span>
+                    </div>
                     {brand
                       ? <p className="truncate text-xs text-gray-500">{brand}</p>
                       : colorLabel && <p className="truncate text-xs text-gray-500">{colorLabel}</p>

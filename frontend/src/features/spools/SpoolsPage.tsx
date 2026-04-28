@@ -799,6 +799,10 @@ export default function SpoolsPage() {
 
   const columnDefs = useMemo((): ColumnDef[] => [
     {
+      key: 'id', label: 'ID', thClassName: 'w-14',
+      render: (s) => <span className="text-xs text-gray-500 tabular-nums">#{s.id}</span>,
+    },
+    {
       key: 'color', label: 'Color', thClassName: 'w-14',
       render: (s) => {
         const colors = [s.filament?.color_hex, s.extra_color_hex_2, s.extra_color_hex_3, s.extra_color_hex_4]

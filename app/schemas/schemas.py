@@ -348,10 +348,20 @@ class AmsFilamentSummary(OrmBase):
     material: str | None = None
 
 
+class AmsBrandSummary(OrmBase):
+    id: int
+    name: str
+
+
 class AmsSpoolSummary(OrmBase):
     id: int
     name: str | None = None
     filament: AmsFilamentSummary | None = None
+    brand: AmsBrandSummary | None = None
+    initial_weight: float = 0
+    used_weight: float = 0
+    spool_weight: float | None = None
+    notes: str | None = None
 
 
 class AmsSlotSchema(OrmBase):

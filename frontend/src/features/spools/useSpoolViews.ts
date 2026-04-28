@@ -28,7 +28,7 @@ export interface SpoolView {
 // ── Defaults ──────────────────────────────────────────────────────────────────
 
 export const DEFAULT_COLUMNS = [
-  'color', 'name', 'material', 'status', 'fill', 'remaining', 'printer', 'last_used',
+  'id', 'color', 'name', 'material', 'status', 'fill', 'remaining', 'printer', 'last_used',
 ]
 
 const EMPTY_FILTERS: ViewFilters = {

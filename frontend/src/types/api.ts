@@ -332,6 +332,11 @@ export interface AmsSpoolSummary {
   id: number
   name: string | null
   filament: AmsFilamentSummary | null
+  brand: { id: number; name: string } | null
+  initial_weight: number
+  used_weight: number
+  spool_weight: number | null
+  notes: string | null
 }
 
 export interface AmsSlot {

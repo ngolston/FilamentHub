@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.v1.deps import get_current_user, require_editor
 from app.db.session import get_db
-from app.models.models import Spool, StorageLocation, User, WeightLog
+from app.models.models import FilamentProfile, Spool, StorageLocation, User, WeightLog
 from app.schemas.schemas import (
     BulkSpoolAction,
     PaginatedResponse,
@@ -22,7 +22,7 @@ from app.services.storage import upload_spool_photo
 router = APIRouter(prefix="/spools", tags=["spools"])
 
 SPOOL_LOAD_OPTIONS = [
-    selectinload(Spool.filament),
+    selectinload(Spool.filament).selectinload(FilamentProfile.brand),
     selectinload(Spool.brand),
     selectinload(Spool.location),
 ]
@@ -88,8 +88,8 @@ async def create_spool(
     spool = Spool(owner_id=current_user.id, **body.model_dump())
     db.add(spool)
     await db.flush()
-    await db.refresh(spool, attribute_names=["filament", "brand", "location"])
-    return spool
+    result = await db.execute(_spool_query(current_user.id).where(Spool.id == spool.id))
+    return result.scalar_one()
 
 
 @router.get("/{spool_id}", response_model=SpoolResponse)
@@ -164,8 +164,8 @@ async def upload_photo(
     url = await upload_spool_photo(spool_id, file)
     spool.photo_url = url
     await db.flush()
-    await db.refresh(spool, attribute_names=["filament", "brand", "location"])
-    return spool
+    result = await db.execute(_spool_query(current_user.id).where(Spool.id == spool_id))
+    return result.scalar_one()
 
 
 # ── Weight log ────────────────────────────────────────────────────────────────

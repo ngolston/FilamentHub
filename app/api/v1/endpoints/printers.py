@@ -18,8 +18,10 @@ def _printer_q(owner_id: str):
         select(Printer)
         .where(Printer.owner_id == owner_id)
         .options(
-            selectinload(Printer.ams_units).selectinload(AmsUnit.slots).selectinload(AmsSlot.spool),
-            selectinload(Printer.direct_spool),
+            selectinload(Printer.ams_units).selectinload(AmsUnit.slots).selectinload(AmsSlot.spool).selectinload(Spool.filament),
+            selectinload(Printer.ams_units).selectinload(AmsUnit.slots).selectinload(AmsSlot.spool).selectinload(Spool.brand),
+            selectinload(Printer.direct_spool).selectinload(Spool.filament),
+            selectinload(Printer.direct_spool).selectinload(Spool.brand),
         )
     )
 
