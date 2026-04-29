@@ -224,7 +224,7 @@ function MaterialDonut({ segments }: { segments: { label: string; pct: number; c
 }
 
 function SpoolCard({ spool, assignment }: { spool: SpoolResponse; assignment?: string }) {
-  const color = spool.filament?.color_hex ?? '#6366f1'
+  const color = spool.filament?.color_hex ?? spool.color_hex ?? '#6366f1'
   const pct   = spool.fill_percentage
   const st    = spoolStatus(pct)
   const name  = spool.name ?? spool.filament?.name ?? 'Unnamed Spool'
@@ -318,7 +318,7 @@ function PrinterCard({ printer }: { printer: PrinterResponse }) {
           <p className="text-xs text-gray-600 mb-1.5">Loaded filament</p>
           <div className="flex gap-1.5 flex-wrap">
             {loadedSlots.map((slot) => {
-              const hex = slot.spool?.filament?.color_hex ?? '#6b7280'
+              const hex = slot.spool?.filament?.color_hex ?? slot.spool?.color_hex ?? '#6b7280'
               const mat = slot.spool?.filament?.material ?? null
               const nm  = slot.spool?.filament?.name ?? slot.spool?.name ?? '?'
               return (

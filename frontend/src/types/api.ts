@@ -224,6 +224,7 @@ export interface SpoolResponse {
   purchase_price: number | null
   supplier: string | null
   product_url: string | null
+  color_hex: string | null
   extra_color_hex_2: string | null
   extra_color_hex_3: string | null
   extra_color_hex_4: string | null
@@ -249,6 +250,7 @@ export interface SpoolCreate {
   purchase_price?: number
   supplier?: string
   product_url?: string
+  color_hex?: string | null
   extra_color_hex_2?: string | null
   extra_color_hex_3?: string | null
   extra_color_hex_4?: string | null
@@ -331,6 +333,7 @@ export interface AmsFilamentSummary {
 export interface AmsSpoolSummary {
   id: number
   name: string | null
+  color_hex: string | null
   filament: AmsFilamentSummary | null
   brand: { id: number; name: string } | null
   initial_weight: number

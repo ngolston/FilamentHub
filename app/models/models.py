@@ -255,6 +255,9 @@ class Spool(Base):
     supplier: Mapped[str | None] = mapped_column(String(200))
     product_url: Mapped[str | None] = mapped_column(String(500))
 
+    # Primary color override (used when no filament profile is linked)
+    color_hex: Mapped[str | None] = mapped_column(String(7))
+
     # Extra colors (for multi-color / gradient / silk filaments)
     extra_color_hex_2: Mapped[str | None] = mapped_column(String(7))
     extra_color_hex_3: Mapped[str | None] = mapped_column(String(7))

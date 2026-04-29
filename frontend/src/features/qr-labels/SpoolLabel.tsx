@@ -96,7 +96,7 @@ function SpoolRingIcon({ color, size = 18 }: { color: string | null; size?: numb
 // Colored header bar (brand + material) | QR left + data right | fill bar footer
 function ClassicBadgeLabel({ spool, fields, encoding }: Omit<Props, 'template' | 'className'>) {
   const fp    = spool.filament
-  const hex   = fp?.color_hex ?? null
+  const hex   = fp?.color_hex ?? spool.color_hex ?? null
   const name  = spool.name ?? fp?.name ?? '—'
   const brand = fp?.brand?.name ?? spool.brand?.name ?? ''
   const mat   = fp?.material ?? '—'
@@ -151,7 +151,7 @@ function ClassicBadgeLabel({ spool, fields, encoding }: Omit<Props, 'template' |
 // Color stripe left | name + small QR | 2-col data grid (temps, weight) | fill bar
 function WideCardLabel({ spool, fields, encoding }: Omit<Props, 'template' | 'className'>) {
   const fp    = spool.filament
-  const hex   = fp?.color_hex ?? null
+  const hex   = fp?.color_hex ?? spool.color_hex ?? null
   const name  = spool.name ?? fp?.name ?? '—'
   const brand = fp?.brand?.name ?? spool.brand?.name ?? ''
   const mat   = fp?.material ?? '—'
@@ -205,7 +205,7 @@ function WideCardLabel({ spool, fields, encoding }: Omit<Props, 'template' | 'cl
 // Compressed Classic Badge — same structure, tighter vertical spacing
 function SlimTagLabel({ spool, fields, encoding }: Omit<Props, 'template' | 'className'>) {
   const fp    = spool.filament
-  const hex   = fp?.color_hex ?? null
+  const hex   = fp?.color_hex ?? spool.color_hex ?? null
   const name  = spool.name ?? fp?.name ?? '—'
   const brand = fp?.brand?.name ?? spool.brand?.name ?? ''
   const mat   = fp?.material ?? '—'
@@ -257,7 +257,7 @@ function SlimTagLabel({ spool, fields, encoding }: Omit<Props, 'template' | 'cla
 // Single horizontal strip: color sliver | tiny QR | name | material | fill bar
 function MicroStripLabel({ spool, fields, encoding }: Omit<Props, 'template' | 'className'>) {
   const fp   = spool.filament
-  const hex  = fp?.color_hex ?? null
+  const hex  = fp?.color_hex ?? spool.color_hex ?? null
   const name = spool.name ?? fp?.name ?? '—'
   const mat  = fp?.material ?? ''
 
@@ -284,7 +284,7 @@ function MicroStripLabel({ spool, fields, encoding }: Omit<Props, 'template' | '
 // Avery-optimized: color stripe left, centered name + QR + fill bar balance
 function SquareClassicLabel({ spool, fields, encoding }: Omit<Props, 'template' | 'className'>) {
   const fp    = spool.filament
-  const hex   = fp?.color_hex ?? null
+  const hex   = fp?.color_hex ?? spool.color_hex ?? null
   const name  = spool.name ?? fp?.name ?? '—'
   const brand = fp?.brand?.name ?? spool.brand?.name ?? ''
   const mat   = fp?.material ?? '—'
@@ -322,7 +322,7 @@ function SquareClassicLabel({ spool, fields, encoding }: Omit<Props, 'template' 
 // Portrait: color header + spool icon | brand/name | QR centered | data rows | fill bar
 function TallCardLabel({ spool, fields, encoding }: Omit<Props, 'template' | 'className'>) {
   const fp    = spool.filament
-  const hex   = fp?.color_hex ?? null
+  const hex   = fp?.color_hex ?? spool.color_hex ?? null
   const name  = spool.name ?? fp?.name ?? '—'
   const brand = fp?.brand?.name ?? spool.brand?.name ?? ''
   const mat   = fp?.material ?? '—'
@@ -371,7 +371,7 @@ function TallCardLabel({ spool, fields, encoding }: Omit<Props, 'template' | 'cl
 // Spool end edge label: thin strip | QR top | name | material | weight | fill bar
 function NarrowPortraitLabel({ spool, fields, encoding }: Omit<Props, 'template' | 'className'>) {
   const fp   = spool.filament
-  const hex  = fp?.color_hex ?? null
+  const hex  = fp?.color_hex ?? spool.color_hex ?? null
   const name = spool.name ?? fp?.name ?? '—'
   const mat  = fp?.material ?? '—'
 

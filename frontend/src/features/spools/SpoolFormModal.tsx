@@ -365,6 +365,7 @@ export function SpoolFormModal({ spool, prefillFilamentId, onClose }: Props) {
   const [filamentId, setFilamentId] = useState<number | undefined>(defaultFilamentId)
   const [pendingPhoto, setPendingPhoto] = useState<File | null>(null)
   const [photoUrl, setPhotoUrl] = useState(spool?.photo_url ?? '')
+  const [colorHex, setColorHex] = useState(spool?.color_hex ?? spool?.filament?.color_hex ?? '')
   const [colorHex2, setColorHex2] = useState(spool?.extra_color_hex_2 ?? '')
   const [colorHex3, setColorHex3] = useState(spool?.extra_color_hex_3 ?? '')
   const [colorHex4, setColorHex4] = useState(spool?.extra_color_hex_4 ?? '')
@@ -405,6 +406,7 @@ export function SpoolFormModal({ spool, prefillFilamentId, onClose }: Props) {
         product_url:       data.product_url    || undefined,
         notes:             data.notes          || undefined,
         photo_url:         !pendingPhoto ? (photoUrl || null) : undefined,
+        color_hex:         colorHex || null,
         extra_color_hex_2: colorHex2 || null,
         extra_color_hex_3: colorHex3 || null,
         extra_color_hex_4: colorHex4 || null,
@@ -451,9 +453,10 @@ export function SpoolFormModal({ spool, prefillFilamentId, onClose }: Props) {
           <Section label="Filament">
             <FilamentPicker
               value={filamentId}
-              onChange={(id) => {
+              onChange={(id, filament) => {
                 setFilamentId(id)
                 setValue('filament_id', id)
+                if (filament?.color_hex) setColorHex(filament.color_hex)
               }}
             />
 
@@ -536,6 +539,13 @@ export function SpoolFormModal({ spool, prefillFilamentId, onClose }: Props) {
               Initial weight is the filament only (no spool). Leave used at 0 for a brand-new spool.
             </p>
           </Section>
+
+          {/* Primary colour — only when no filament profile is linked */}
+          {!filamentId && (
+            <Section label="Colour">
+              <ExtraColorPicker label="Primary colour" value={colorHex} onChange={setColorHex} />
+            </Section>
+          )}
 
           {/* Extra colours (multi-filament spools) */}
           <Section label="Extra colours">

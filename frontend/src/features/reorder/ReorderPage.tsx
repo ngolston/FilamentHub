@@ -66,7 +66,7 @@ function ReorderRow({
   const name    = spool.name ?? spool.filament?.name ?? `Spool #${spool.id}`
   const brand   = spool.brand?.name ?? spool.filament?.brand?.name ?? null
   const mat     = spool.filament?.material ?? null
-  const color   = spool.filament?.color_hex ?? '#6b7280'
+  const color   = spool.filament?.color_hex ?? spool.color_hex ?? '#6b7280'
   const pct     = spool.fill_percentage
   const hasLink = Boolean(spool.product_url)
 

@@ -241,6 +241,7 @@ class SpoolCreate(BaseModel):
     purchase_price: float | None = None
     supplier: str | None = None
     product_url: str | None = None
+    color_hex: str | None = None
     extra_color_hex_2: str | None = None
     extra_color_hex_3: str | None = None
     extra_color_hex_4: str | None = None
@@ -262,6 +263,7 @@ class SpoolUpdate(BaseModel):
     purchase_price: float | None = None
     supplier: str | None = None
     product_url: str | None = None
+    color_hex: str | None = None
     extra_color_hex_2: str | None = None
     extra_color_hex_3: str | None = None
     extra_color_hex_4: str | None = None
@@ -295,6 +297,7 @@ class SpoolResponse(OrmBase):
     purchase_price: float | None
     supplier: str | None
     product_url: str | None
+    color_hex: str | None
     extra_color_hex_2: str | None
     extra_color_hex_3: str | None
     extra_color_hex_4: str | None
@@ -356,6 +359,7 @@ class AmsBrandSummary(OrmBase):
 class AmsSpoolSummary(OrmBase):
     id: int
     name: str | None = None
+    color_hex: str | None = None
     filament: AmsFilamentSummary | None = None
     brand: AmsBrandSummary | None = None
     initial_weight: float = 0

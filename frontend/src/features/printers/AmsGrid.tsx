@@ -172,7 +172,7 @@ export function AmsGrid({ printer, canEdit }: AmsGridProps) {
 function SlotTooltip({ spool }: { spool: AmsSpoolSummary }) {
   const remaining = Math.max(0, spool.initial_weight - spool.used_weight)
   const fillPct = spool.initial_weight > 0 ? Math.round((remaining / spool.initial_weight) * 100) : 0
-  const colorHex = spool.filament?.color_hex
+  const colorHex = spool.filament?.color_hex ?? spool.color_hex
   const label = spool.name ?? spool.filament?.name ?? null
   const material = spool.filament?.material ?? null
   const brandName = spool.brand?.name ?? null
@@ -215,7 +215,7 @@ function AmsUnitRow({
       <p className="mb-2.5 text-xs font-medium text-gray-400">{unit.name}</p>
       <div className="grid grid-cols-4 gap-2">
         {slots.map((slot) => {
-          const colorHex = slot.spool?.filament?.color_hex
+          const colorHex = slot.spool?.filament?.color_hex ?? slot.spool?.color_hex
           const label = slot.spool?.name ?? slot.spool?.filament?.name ?? null
           const material = slot.spool?.filament?.material ?? null
           const isEmpty = slot.spool_id === null
@@ -296,7 +296,7 @@ function ExternalSlot({
   const [confirming, setConfirming] = useState(false)
   if (!spool && !canEdit) return null
 
-  const colorHex = spool?.filament?.color_hex
+  const colorHex = spool?.filament?.color_hex ?? spool?.color_hex
   const label = spool?.name ?? spool?.filament?.name ?? null
   const material = spool?.filament?.material ?? null
 
@@ -460,7 +460,7 @@ function SpoolPickerModal({
               >
                 <div
                   className="h-6 w-6 shrink-0 rounded-full border border-black/20"
-                  style={{ backgroundColor: spool.filament?.color_hex ?? '#6366f1' }}
+                  style={{ backgroundColor: spool.filament?.color_hex ?? spool.color_hex ?? '#6366f1' }}
                 />
                 <div className="min-w-0">
                   <p className="truncate text-sm text-white">

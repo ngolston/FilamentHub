@@ -102,11 +102,17 @@ export function NotificationsSection() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notification-prefs'] }),
   })
 
-  // Debounce saves so rapid toggles don't hammer the API
+  // Accumulate patches from all sections so rapid cross-section toggles don't
+  // drop each other — the timer flush sends everything that changed together.
+  const pendingPatch = useRef<Record<string, unknown>>({})
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const debouncedSave = useCallback((patch: Record<string, unknown>) => {
+    Object.assign(pendingPatch.current, patch)
     if (saveTimer.current) clearTimeout(saveTimer.current)
-    saveTimer.current = setTimeout(() => saveMutation.mutate(patch), 600)
+    saveTimer.current = setTimeout(() => {
+      saveMutation.mutate({ ...pendingPatch.current })
+      pendingPatch.current = {}
+    }, 600)
   }, [saveMutation])
 
   function setAlerts(key: keyof AlertPrefs, val: boolean) {
