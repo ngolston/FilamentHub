@@ -4,7 +4,9 @@
       "Bash(npx tsc *)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:api.github.com)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(docker compose *)",
+      "Bash(xargs cat *)"
     ]
   }
 }

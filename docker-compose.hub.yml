@@ -16,7 +16,7 @@
 services:
 
   api:
-    image: YOUR_DOCKERHUB_USERNAME/filamenthub-api:latest
+    image: ace2123/filamenthub-api:latest
     restart: unless-stopped
     environment:
       DATABASE_URL:  sqlite+aiosqlite:////app/data/filamenthub.db
@@ -42,7 +42,7 @@ services:
       start_period: 20s
 
   web:
-    image: YOUR_DOCKERHUB_USERNAME/filamenthub-web:latest
+    image: ace2123/filamenthub-web:latest
     restart: unless-stopped
     depends_on:
       api:

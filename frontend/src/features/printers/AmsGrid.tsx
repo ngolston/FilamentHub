@@ -207,6 +207,7 @@ function AmsUnitRow({
   onAssign: (slotIndex: number, spoolId: number | null) => void
   onClear: (slotIndex: number) => void
 }) {
+  const [confirmingSlot, setConfirmingSlot] = useState<number | null>(null)
   const slots = [...unit.slots].sort((a, b) => a.slot_index - b.slot_index)
 
   return (
@@ -255,12 +256,23 @@ function AmsUnitRow({
               </button>
 
               {canEdit && !isEmpty && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onClear(slot.slot_index) }}
-                  className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white group-hover:flex"
-                >
-                  <X className="h-2.5 w-2.5" />
-                </button>
+                confirmingSlot === slot.slot_index ? (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onClear(slot.slot_index); setConfirmingSlot(null) }}
+                    onBlur={() => setConfirmingSlot(null)}
+                    className="absolute -right-1.5 -top-1.5 flex h-5 items-center rounded-full bg-red-600 px-1.5 text-white text-[9px] font-semibold leading-none whitespace-nowrap shadow-lg"
+                    autoFocus
+                  >
+                    Confirm?
+                  </button>
+                ) : (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setConfirmingSlot(slot.slot_index) }}
+                    className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white group-hover:flex"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                )
               )}
             </div>
           )
@@ -281,6 +293,7 @@ function ExternalSlot({
   onClear: () => void
   isPending: boolean
 }) {
+  const [confirming, setConfirming] = useState(false)
   if (!spool && !canEdit) return null
 
   const colorHex = spool?.filament?.color_hex
@@ -324,12 +337,23 @@ function ExternalSlot({
         </button>
 
         {canEdit && spool && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onClear() }}
-            className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white group-hover:flex"
-          >
-            <X className="h-2.5 w-2.5" />
-          </button>
+          confirming ? (
+            <button
+              onClick={(e) => { e.stopPropagation(); onClear(); setConfirming(false) }}
+              onBlur={() => setConfirming(false)}
+              className="absolute -right-1.5 -top-1.5 flex h-5 items-center rounded-full bg-red-600 px-1.5 text-white text-[9px] font-semibold leading-none whitespace-nowrap shadow-lg"
+              autoFocus
+            >
+              Confirm?
+            </button>
+          ) : (
+            <button
+              onClick={(e) => { e.stopPropagation(); setConfirming(true) }}
+              className="absolute -right-1.5 -top-1.5 hidden h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white group-hover:flex"
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          )
         )}
       </div>
     </div>
@@ -351,6 +375,8 @@ function SpoolPickerModal({
   moveTargets: { unitId: number; slotIndex: number; label: string }[]
   onMoveToSlot: (unitId: number, slotIndex: number) => void
 }) {
+  const [confirmUnassign, setConfirmUnassign] = useState(false)
+
   const { data } = useQuery({
     queryKey: ['spools', { status: 'active,storage', page_size: 100 }],
     queryFn: () => spoolsApi.list({ status: 'active,storage', page_size: 100 }),
@@ -390,16 +416,35 @@ function SpoolPickerModal({
 
           {/* Unassign */}
           {currentSpoolId !== null && (
-            <button
-              onClick={() => onSelect(null)}
-              disabled={isPending}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-red-900/20 transition-colors text-red-400"
-            >
-              <div className="h-6 w-6 shrink-0 rounded-full border border-red-700/40 bg-red-900/30 flex items-center justify-center">
-                <X className="h-3.5 w-3.5" />
+            confirmUnassign ? (
+              <div className="flex items-center gap-2 rounded-lg border border-red-700/50 bg-red-900/20 px-3 py-2.5">
+                <span className="flex-1 text-sm text-red-300">Remove spool from this slot?</span>
+                <button
+                  onClick={() => { setConfirmUnassign(false); onSelect(null) }}
+                  disabled={isPending}
+                  className="rounded-lg bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-500 transition-colors disabled:opacity-50"
+                >
+                  Yes, remove
+                </button>
+                <button
+                  onClick={() => setConfirmUnassign(false)}
+                  className="rounded-lg bg-surface-3 px-3 py-1 text-xs font-semibold text-gray-300 hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
               </div>
-              <span className="text-sm font-medium">Unassign spool</span>
-            </button>
+            ) : (
+              <button
+                onClick={() => setConfirmUnassign(true)}
+                disabled={isPending}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-red-900/20 transition-colors text-red-400"
+              >
+                <div className="h-6 w-6 shrink-0 rounded-full border border-red-700/40 bg-red-900/30 flex items-center justify-center">
+                  <X className="h-3.5 w-3.5" />
+                </div>
+                <span className="text-sm font-medium">Unassign spool</span>
+              </button>
+            )
           )}
 
           {/* Available spools */}
