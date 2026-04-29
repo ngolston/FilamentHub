@@ -1,0 +1,92 @@
+# ── Stage 1: Build React frontend ────────────────────────────────────────────
+FROM node:22-alpine AS frontend
+
+WORKDIR /app
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY frontend/ .
+
+ARG VITE_API_URL=/api/v1
+ENV VITE_API_URL=${VITE_API_URL}
+RUN npm run build
+
+# ── Stage 2: Combined API + Web image ────────────────────────────────────────
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# nginx for static files + reverse proxy; supervisor to manage both processes
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nginx supervisor libjpeg-dev zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python application
+COPY pyproject.toml .
+COPY app/ ./app/
+RUN pip install --no-cache-dir -e .
+COPY . .
+
+# Built frontend static files
+COPY --from=frontend /app/dist /usr/share/nginx/html
+
+# nginx: same config as the standalone web image but upstream is localhost
+RUN printf '\
+worker_processes auto;\n\
+events { worker_connections 1024; }\n\
+http {\n\
+    include       /etc/nginx/mime.types;\n\
+    default_type  application/octet-stream;\n\
+    sendfile on;\n\
+    keepalive_timeout 65;\n\
+    gzip on;\n\
+    gzip_vary on;\n\
+    gzip_types text/plain text/css text/javascript application/javascript application/json image/svg+xml;\n\
+    client_max_body_size 25M;\n\
+    upstream api { server 127.0.0.1:8000; keepalive 8; }\n\
+    server {\n\
+        listen 80;\n\
+        server_name _;\n\
+        location /media/ {\n\
+            proxy_pass         http://api;\n\
+            proxy_http_version 1.1;\n\
+            proxy_set_header   Host              $host;\n\
+            proxy_set_header   X-Real-IP         $remote_addr;\n\
+            proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;\n\
+            proxy_set_header   Connection        "";\n\
+            expires 7d;\n\
+            add_header Cache-Control "public";\n\
+        }\n\
+        location /api/ {\n\
+            proxy_pass         http://api;\n\
+            proxy_http_version 1.1;\n\
+            proxy_set_header   Host              $host;\n\
+            proxy_set_header   X-Real-IP         $remote_addr;\n\
+            proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;\n\
+            proxy_set_header   X-Forwarded-Proto $scheme;\n\
+            proxy_set_header   Connection        "";\n\
+            proxy_read_timeout 120s;\n\
+        }\n\
+        location ~ ^/(docs|redoc|openapi\\.json)$ {\n\
+            proxy_pass http://api;\n\
+            proxy_set_header Host $host;\n\
+        }\n\
+        location /health { proxy_pass http://api; }\n\
+        location / {\n\
+            root  /usr/share/nginx/html;\n\
+            index index.html;\n\
+            try_files $uri $uri/ /index.html;\n\
+            location ~* \\.(js|css|woff2?|ttf|svg|png|jpg|webp|ico)$ {\n\
+                expires 1y;\n\
+                add_header Cache-Control "public, immutable";\n\
+            }\n\
+        }\n\
+    }\n\
+}\n' > /etc/nginx/nginx.conf
+
+# supervisord program definitions (api starts before nginx via priority ordering)
+COPY docker/supervisord.conf /etc/supervisor/conf.d/filamenthub.conf
+
+EXPOSE 80
+VOLUME ["/app/data"]
+
+CMD ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]

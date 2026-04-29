@@ -2,8 +2,8 @@
 # FilamentHub — self-host via Docker Hub (no source code needed)
 #
 # Usage:
-#   curl -O https://raw.githubusercontent.com/YOUR_GITHUB/filamenthub/main/docker-compose.hub.yml
-#   curl -O https://raw.githubusercontent.com/YOUR_GITHUB/filamenthub/main/.env.example
+#   curl -O https://raw.githubusercontent.com/ngolston/FilamentHub/main/docker-compose.hub.yml
+#   curl -O https://raw.githubusercontent.com/ngolston/FilamentHub/main/.env.example
 #   cp .env.example .env
 #   # Edit .env — set SECRET_KEY and FRONTEND_URL
 #   docker compose -f docker-compose.hub.yml up -d
@@ -15,9 +15,11 @@
 
 services:
 
-  api:
-    image: ace2123/filamenthub-api:latest
+  filamenthub:
+    image: ace2123/filamenthub:latest
     restart: unless-stopped
+    ports:
+      - "${PORT:-80}:80"
     environment:
       DATABASE_URL:  sqlite+aiosqlite:////app/data/filamenthub.db
       DATA_DIR:      /app/data
@@ -32,25 +34,12 @@ services:
       EMAILS_FROM:   ${EMAILS_FROM:-noreply@filamenthub.local}
     volumes:
       - filamenthub_data:/app/data
-    expose:
-      - "8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 20s
-
-  web:
-    image: ace2123/filamenthub-web:latest
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
-    ports:
-      - "${PORT:-80}:80"
-    # nginx config is baked into the image.
-    # Override by mounting your own: - ./my-nginx.conf:/etc/nginx/nginx.conf:ro
+      start_period: 30s
 
 volumes:
   filamenthub_data:
