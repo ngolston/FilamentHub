@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getStoredGeneralPrefs } from '@/hooks/useGeneralPrefs'
 import { useQuery } from '@tanstack/react-query'
 import { format, parseISO } from 'date-fns'
 import {
@@ -705,7 +706,10 @@ type Tab = typeof TABS[number]
 
 export default function AnalyticsPage() {
   const [tab,  setTab]  = useState<Tab>('Overview')
-  const [days, setDays] = useState(30)
+  const [days, setDays] = useState(() => {
+    const dr = getStoredGeneralPrefs().date_range
+    return dr === '7d' ? 7 : dr === '90d' ? 90 : dr === 'all' ? 365 : 30
+  })
 
   const showPeriod = tab !== 'Cost Tracking' && tab !== 'Run-out Forecast'
 

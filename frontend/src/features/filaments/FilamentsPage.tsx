@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getStoredGeneralPrefs } from '@/hooks/useGeneralPrefs'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Search, Plus, Database, CheckCircle, Globe,
@@ -179,7 +180,10 @@ function ProfilesTab() {
                 filament={f}
                 canEdit={isEditor}
                 onEdit={() => setEditing(f)}
-                onDelete={() => setConfirmDelete(f)}
+                onDelete={() => {
+                  if (getStoredGeneralPrefs().delete_confirm) setConfirmDelete(f)
+                  else deleteMutation.mutate(f.id)
+                }}
                 onAddSpool={() => setAddSpoolFor(f)}
               />
             ))}
@@ -415,7 +419,10 @@ function BrandsTab() {
               brand={brand}
               canEdit={isEditor}
               onEdit={() => setEditing(brand)}
-              onDelete={() => setConfirmDelete(brand)}
+              onDelete={() => {
+                if (getStoredGeneralPrefs().delete_confirm) setConfirmDelete(brand)
+                else deleteMutation.mutate(brand.id)
+              }}
             />
           ))}
         </div>

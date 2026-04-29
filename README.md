@@ -2,7 +2,7 @@
 
 **3D printer filament inventory management — self-hosted, open source.**
 
-Track your spool collection, log print jobs, get runout forecasts, print QR labels, and see full usage analytics. Runs entirely on your own hardware with a single Docker command.
+Track your spool collection, log print jobs, get runout forecasts, print QR labels, and see full usage analytics. Runs entirely on your own hardware with a single Docker container.
 
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Docker](https://img.shields.io/badge/docker-hub-blue?logo=docker)
@@ -19,8 +19,8 @@ Track your spool collection, log print jobs, get runout forecasts, print QR labe
 
 ```bash
 # Download the compose file and example env
-curl -O https://raw.githubusercontent.com/YOUR_GITHUB/filamenthub/main/docker-compose.hub.yml
-curl -O https://raw.githubusercontent.com/YOUR_GITHUB/filamenthub/main/.env.example
+curl -O https://raw.githubusercontent.com/ngolston/FilamentHub/main/docker-compose.hub.yml
+curl -O https://raw.githubusercontent.com/ngolston/FilamentHub/main/.env.example
 
 cp .env.example .env
 ```
@@ -124,7 +124,7 @@ docker compose -f docker-compose.hub.yml up -d
 
 ### Raspberry Pi / ARM servers
 
-The Docker images are built for both `linux/amd64` and `linux/arm64` — no changes needed.
+The Docker image is built for both `linux/amd64` and `linux/arm64` — no changes needed.
 
 ---
 
@@ -143,7 +143,7 @@ filamenthub.yourdomain.com {
 ### Traefik
 
 ```yaml
-# In docker-compose.hub.yml, add to the web service:
+# In docker-compose.hub.yml, add to the filamenthub service:
 labels:
   - "traefik.enable=true"
   - "traefik.http.routers.filamenthub.rule=Host(`filamenthub.yourdomain.com`)"
@@ -162,15 +162,20 @@ Set the **Proxy Host** to `http://YOUR-SERVER-IP:80` and enable **Force SSL** + 
 | | |
 |---|---|
 | **Spool inventory** | Track brand, material, color, weight, location, lot number |
+| **Spool color** | Set primary color on spools with or without a linked filament profile |
+| **Multi-color spools** | Up to 4 color swatches for bi-color, silk, and gradient filaments |
 | **Print job logging** | Log filament used per job, auto-deduct from spool |
 | **Analytics** | Daily/weekly/monthly charts, by-material, by-printer, cost tracking |
 | **Run-out forecast** | Days remaining per spool based on actual usage rate |
 | **QR labels** | 7 label templates, print-ready at physical size |
 | **Reorder list** | Low-stock spools with supplier links and suggested quantities |
-| **Alerts** | Low-stock notifications, SMTP or Discord webhook |
+| **Alerts** | Low-stock and runout notifications via in-app, SMTP email, Discord, or webhooks |
+| **Webhooks** | HTTP POST to any URL on alert events, with optional HMAC-SHA256 signing |
+| **AMS integration** | Assign spools to Bambu Lab AMS slots with unassign confirmation |
 | **Community DB** | Browse shared filament profiles |
 | **Import** | Spoolman JSON export → FilamentHub in one click |
 | **Export** | CSV or JSON export of your inventory |
+| **Appearance** | 5 themes, 8 accent colors (+ custom hex), density, font size, reduce motion |
 | **2FA** | TOTP two-factor authentication |
 | **API keys** | Machine-to-machine access for OctoPrint/Moonraker integrations |
 | **Multi-user** | Admin / editor / viewer roles |
@@ -205,7 +210,7 @@ alembic upgrade head
 ```bash
 cd frontend
 npm install
-npm run dev          # Vite dev server on :5173, proxies /api → localhost:8000
+npm run dev          # Vite dev server on :5173, proxies /api and /media → localhost:8000
 npm run build        # Production build → dist/
 ```
 
@@ -224,9 +229,8 @@ docker compose --profile dev up
 
 1. **Create a Docker Hub account** at [hub.docker.com](https://hub.docker.com)
 
-2. **Create two repositories** on Docker Hub:
-   - `YOUR_USERNAME/filamenthub-api`
-   - `YOUR_USERNAME/filamenthub-web`
+2. **Create one repository** on Docker Hub:
+   - `YOUR_USERNAME/filamenthub`
 
 3. **Create a Docker Hub access token:**
    Docker Hub → Account Settings → Security → **New Access Token**
@@ -261,60 +265,57 @@ Watch the build at **GitHub → Actions**.
 # Log in
 docker login
 
-# Build and push the API image
+# Build and push the combined image (frontend + API + nginx in one)
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --tag YOUR_USERNAME/filamenthub-api:latest \
+  --tag YOUR_USERNAME/filamenthub:latest \
+  --build-arg VITE_API_URL=/api/v1 \
   --push \
+  -f Dockerfile.combined \
   .
-
-# Build and push the Web image (frontend + nginx)
-docker buildx build \
-  --platform linux/amd64,linux/arm64 \
-  --tag YOUR_USERNAME/filamenthub-web:latest \
-  --push \
-  -f frontend/Dockerfile.prod \
-  ./frontend
 ```
 
-Then update `docker-compose.hub.yml` to replace `YOUR_DOCKERHUB_USERNAME` with your real username before sharing it.
+Then update `docker-compose.hub.yml` to replace `ace2123` with your Docker Hub username before sharing it.
 
 ---
 
 ## Architecture
 
+Everything runs inside a single container. nginx serves the React frontend on port 80 and proxies API and media requests to Uvicorn running on localhost. supervisord keeps both processes running and restarts either one if it crashes.
+
 ```
 Browser
   │
   ▼
-┌─────────────────────────────┐
-│   web container             │
-│   nginx:stable-alpine       │
-│                             │
-│   /            → React SPA  │  (built into image at docker build time)
-│   /api/*       → api:8000   │
-└─────────────────────────────┘
-  │  internal network
-  ▼
-┌─────────────────────────────┐
-│   api container             │
-│   python:3.12-slim          │
-│                             │
-│   FastAPI + Uvicorn         │
-│   SQLite (named volume)     │
-│   Photos (named volume)     │
-└─────────────────────────────┘
-  │
-  ▼
-┌─────────────────────────────┐
-│  filamenthub_data volume    │
-│  /app/data/                 │
-│    filamenthub.db           │
-│    photos/                  │
-└─────────────────────────────┘
+┌──────────────────────────────────────┐
+│   filamenthub container              │
+│   python:3.12-slim + nginx           │
+│                                      │
+│  ┌─────────────────────────────────┐ │
+│  │  nginx (port 80)                │ │
+│  │  /          → React SPA         │ │
+│  │  /api/*     → 127.0.0.1:8000   │ │
+│  │  /media/*   → 127.0.0.1:8000   │ │
+│  └──────────────┬──────────────────┘ │
+│                 │ localhost           │
+│  ┌──────────────▼──────────────────┐ │
+│  │  Uvicorn (port 8000)            │ │
+│  │  FastAPI application            │ │
+│  │  SQLite + photo storage         │ │
+│  └─────────────────────────────────┘ │
+│                                      │
+│  supervisord manages both processes  │
+└──────────────────────┬───────────────┘
+                       │
+                       ▼
+         ┌─────────────────────────┐
+         │  filamenthub_data       │
+         │  named Docker volume    │
+         │  /app/data/             │
+         │    filamenthub.db       │
+         │    photos/              │
+         └─────────────────────────┘
 ```
-
-The API is never exposed directly to the network — all traffic goes through the nginx container.
 
 ---
 

@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar'
 import { CommandPalette } from '@/features/search/CommandPalette'
 import { OnboardingFlow, isOnboardingComplete } from '@/features/onboarding/OnboardingFlow'
 import { cn } from '@/utils/cn'
+import { getStoredGeneralPrefs } from '@/hooks/useGeneralPrefs'
 
 const PAGE_TITLES: Record<string, string> = {
   '/':            'Dashboard',
@@ -32,8 +33,9 @@ export function AppLayout() {
     setSidebarOpen(false)
   }, [location.pathname])
 
-  // Global ⌘K / Ctrl+K shortcut
+  // Global ⌘K / Ctrl+K shortcut (respects hotkeys pref)
   useEffect(() => {
+    if (!getStoredGeneralPrefs().hotkeys) return
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()

@@ -4,6 +4,7 @@ import { usersApi } from '@/api/users'
 import { Toggle } from '@/components/ui/Toggle'
 import { SettingsCard } from './SettingsCard'
 import { ONBOARDING_KEY } from '@/features/onboarding/OnboardingFlow'
+import { patchStoredGeneralPrefs } from '@/hooks/useGeneralPrefs'
 
 type ViewMode   = 'grid' | 'table'
 type DateRange  = '7d' | '30d' | '90d' | 'all'
@@ -108,6 +109,7 @@ export function GeneralSection() {
   function set<K extends keyof GeneralPrefs>(key: K, val: GeneralPrefs[K]) {
     const updated = { ...prefs, [key]: val }
     setPrefs(updated)
+    patchStoredGeneralPrefs({ [key]: val } as Partial<GeneralPrefs>)
     debouncedSave({ [key]: val })
   }
 

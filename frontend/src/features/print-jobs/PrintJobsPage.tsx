@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getStoredGeneralPrefs } from '@/hooks/useGeneralPrefs'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
@@ -280,7 +281,7 @@ export default function PrintJobsPage() {
   const [showModal,      setShowModal]      = useState(false)
   const [outcomeFilter,  setOutcomeFilter]  = useState('')
   const [page,           setPage]           = useState(1)
-  const PAGE_SIZE = 20
+  const PAGE_SIZE = getStoredGeneralPrefs().page_size
 
   const { data, isLoading } = useQuery({
     queryKey: ['print-jobs', { outcome: outcomeFilter, page }],

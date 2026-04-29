@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Search, Plus, Package, LayoutGrid, List, X,
-  CheckSquare, Trash2,
+  CheckSquare, Trash2, AlertTriangle,
   Printer, MapPin, Scale, Tag, Calendar, DollarSign,
   Thermometer, Droplets, Gauge, Hash, Link2, Pencil,
   Bookmark, BookmarkCheck, Columns3,
@@ -26,8 +26,8 @@ import { useSpoolViews, loadColumns, saveColumns, DEFAULT_COLUMNS } from './useS
 import type { SpoolResponse, SpoolStatus } from '@/types/api'
 import type { SortKey, ColumnDef } from './SpoolTable'
 import { Badge } from '@/components/ui/Badge'
-
-const PAGE_SIZE = 10
+import { getStoredGeneralPrefs } from '@/hooks/useGeneralPrefs'
+import type { GeneralPrefs } from '@/hooks/useGeneralPrefs'
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 interface Toast { id: string; msg: string; type?: 'success' | 'error' }
@@ -523,11 +523,20 @@ function FilterSelect({ value, onChange, label, options }: {
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+function toSortKey(s: GeneralPrefs['sort_order']): SortKey {
+  if (s === 'fill_pct')  return 'fill_pct'
+  if (s === 'material')  return 'material'
+  if (s === 'brand')     return 'name'
+  return 'last_used'
+}
+
 export default function SpoolsPage() {
   const { isEditor }       = useAuth()
   const navigate           = useNavigate()
   const queryClient        = useQueryClient()
   const { toasts, toast }  = useToast()
+
+  const pageSize = getStoredGeneralPrefs().page_size
 
   // ── Views (saved configurations) ───────────────────────────────────────────
   const { allViews, activeView, activeId, activateView, saveView, deleteView } = useSpoolViews()
@@ -550,9 +559,9 @@ export default function SpoolsPage() {
   const [printerFlt,    setPrinterFlt]    = useState('')
 
   // ── View / sort ─────────────────────────────────────────────────────────────
-  const [view,    setView]    = useState<'table' | 'grid'>('table')
+  const [view,    setView]    = useState<'table' | 'grid'>(() => getStoredGeneralPrefs().view_mode)
   const [page,    setPage]    = useState(1)
-  const [sortBy,  setSortBy]  = useState<SortKey>('last_used')
+  const [sortBy,  setSortBy]  = useState<SortKey>(() => toSortKey(getStoredGeneralPrefs().sort_order))
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   // ── Selection ──────────────────────────────────────────────────────────────
@@ -678,9 +687,9 @@ export default function SpoolsPage() {
   }, [filtered, sortBy, sortDir])
 
   // ── Pagination ─────────────────────────────────────────────────────────────
-  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize))
   const safePage  = Math.min(page, pageCount)
-  const paged     = sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
+  const paged     = sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
 
   useEffect(() => { setPage(1) }, [search, material, brandFilter, statusFlt, printerFlt, colorFlt, basicColorFlt, locationFlt])
 
@@ -968,7 +977,13 @@ export default function SpoolsPage() {
     isEditor,
     onView:        (s: SpoolResponse) => setViewSpool(s),
     onEdit:        (s: SpoolResponse) => navigate(`/spools/${s.id}/edit`),
-    onDelete:      (s: SpoolResponse) => setDeleteModal({ ids: [s.id], name: s.name ?? s.filament?.name ?? `Spool #${s.id}` }),
+    onDelete:      (s: SpoolResponse) => {
+      if (getStoredGeneralPrefs().delete_confirm) {
+        setDeleteModal({ ids: [s.id], name: s.name ?? s.filament?.name ?? `Spool #${s.id}` })
+      } else {
+        bulkMutation.mutate({ ids: [s.id], action: 'delete' })
+      }
+    },
     onLoadPrinter: (s: SpoolResponse) => setLoadModal(s),
     onLogUsage:    (s: SpoolResponse) => setLogModal(s),
     onPrintQR:     (s: SpoolResponse) => toast(`QR queued for ${s.name ?? s.filament?.name ?? `Spool #${s.id}`}`),
@@ -993,6 +1008,17 @@ export default function SpoolsPage() {
           </div>
         ))}
       </div>
+
+      {/* ── Low stock banner ───────────────────────────────────────────────── */}
+      {getStoredGeneralPrefs().low_stock_banner && (stats.low + stats.critical) > 0 && (
+        <div className="flex items-center gap-3 rounded-xl border border-yellow-700/50 bg-yellow-950/40 px-4 py-3 text-sm text-yellow-300">
+          <AlertTriangle className="h-4 w-4 shrink-0 text-yellow-400" />
+          <span>
+            <strong>{stats.low + stats.critical}</strong> spool{(stats.low + stats.critical) !== 1 ? 's' : ''} {(stats.low + stats.critical) !== 1 ? 'are' : 'is'} running low
+            {stats.critical > 0 && <> — <strong>{stats.critical}</strong> critical</>}.
+          </span>
+        </div>
+      )}
 
       {/* ── Views bar ──────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -1213,7 +1239,13 @@ export default function SpoolsPage() {
             >Move to…</BulkBtn>
             <BulkBtn
               danger
-              onClick={() => setDeleteModal({ ids: [...selected] })}
+              onClick={() => {
+                if (getStoredGeneralPrefs().delete_confirm) {
+                  setDeleteModal({ ids: [...selected] })
+                } else {
+                  bulkMutation.mutate({ ids: [...selected], action: 'delete' })
+                }
+              }}
               icon={<Trash2 className="h-3.5 w-3.5" />}
             >Delete</BulkBtn>
           </div>
