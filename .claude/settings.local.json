@@ -6,7 +6,8 @@
       "WebFetch(domain:api.github.com)",
       "Bash(npm run *)",
       "Bash(docker compose *)",
-      "Bash(xargs cat *)"
+      "Bash(xargs cat *)",
+      "Bash(gh run *)"
     ]
   }
 }

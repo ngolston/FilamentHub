@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Moon, Sun, Contrast, CloudMoon } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { applyTheme, type AppTheme } from '@/hooks/useTheme'
+import { applyAccent, applyDensityAndFontSize, applyReduceMotion } from '@/hooks/useAppearance'
 import { usersApi } from '@/api/users'
 import { Toggle } from '@/components/ui/Toggle'
 import { SettingsCard } from './SettingsCard'
@@ -124,11 +125,16 @@ export function AppearanceSection() {
   useEffect(() => {
     if (serverPrefs) {
       setPrefs((p) => ({ ...p, ...serverPrefs }))
-      // Sync theme to localStorage so useThemeApplier picks it up on next load
       if (serverPrefs.theme) {
         localStorage.setItem('fh_theme', JSON.stringify(serverPrefs.theme))
         applyTheme(serverPrefs.theme)
       }
+      const effectiveAccent = serverPrefs.accent_custom?.match(/^#[0-9a-fA-F]{6}$/)
+        ? serverPrefs.accent_custom
+        : serverPrefs.accent
+      if (effectiveAccent) applyAccent(effectiveAccent)
+      applyDensityAndFontSize(serverPrefs.density ?? 'default', serverPrefs.font_size ?? 'medium')
+      applyReduceMotion(serverPrefs.reduce_motion ?? false)
     }
   }, [serverPrefs])
 
@@ -207,7 +213,11 @@ export function AppearanceSection() {
             <button
               key={c.value}
               type="button"
-              onClick={() => { set('accent', c.value); set('accent_custom', '') }}
+              onClick={() => {
+                applyAccent(c.value)
+                setPrefs(p => ({ ...p, accent: c.value, accent_custom: '' }))
+                debouncedSave({ accent: c.value, accent_custom: '' })
+              }}
               title={c.name}
               className={cn(
                 'h-8 w-8 rounded-full border-2 transition-transform hover:scale-110',
@@ -227,16 +237,20 @@ export function AppearanceSection() {
           <input
             value={prefs.accent_custom}
             onChange={(e) => {
-              set('accent_custom', e.target.value)
-              if (/^#[0-9a-fA-F]{6}$/.test(e.target.value)) set('accent', e.target.value)
+              const val = e.target.value
+              if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+                applyAccent(val)
+                setPrefs(p => ({ ...p, accent: val, accent_custom: val }))
+                debouncedSave({ accent: val, accent_custom: val })
+              } else {
+                setPrefs(p => ({ ...p, accent_custom: val }))
+                debouncedSave({ accent_custom: val })
+              }
             }}
             placeholder="Custom hex, e.g. #a855f7"
             className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-primary-500 focus:outline-none"
           />
         </div>
-        <p className="text-xs text-gray-500">
-          Accent colour changes are visual preferences and will be applied in a future update.
-        </p>
       </SettingsCard>
 
       {/* Density + Font size + Motion */}
@@ -245,7 +259,7 @@ export function AppearanceSection() {
           <PillGroup<Density>
             label="Density"
             value={prefs.density}
-            onChange={(v) => set('density', v)}
+            onChange={(v) => { applyDensityAndFontSize(v, prefs.font_size); set('density', v) }}
             options={[
               { value: 'compact',     label: 'Compact'     },
               { value: 'default',     label: 'Default'     },
@@ -255,7 +269,7 @@ export function AppearanceSection() {
           <PillGroup<FontSize>
             label="Font size"
             value={prefs.font_size}
-            onChange={(v) => set('font_size', v)}
+            onChange={(v) => { applyDensityAndFontSize(prefs.density, v); set('font_size', v) }}
             options={[
               { value: 'small',  label: 'Small'  },
               { value: 'medium', label: 'Medium' },
@@ -267,7 +281,7 @@ export function AppearanceSection() {
               <p className="text-sm font-medium text-white">Reduce motion</p>
               <p className="text-xs text-gray-500 mt-0.5">Minimise animations throughout the interface.</p>
             </div>
-            <Toggle checked={prefs.reduce_motion} onChange={(v) => set('reduce_motion', v)} />
+            <Toggle checked={prefs.reduce_motion} onChange={(v) => { applyReduceMotion(v); set('reduce_motion', v) }} />
           </div>
         </div>
       </SettingsCard>

@@ -164,6 +164,13 @@
 .theme-light .bg-red-500.text-white,
 .theme-light .bg-accent-600.text-white { color: #ffffff; }
 
+/* ── Reduce motion ───────────────────────────────────────────────────────── */
+
+html.reduce-motion * {
+  animation-duration: 0.001ms !important;
+  transition-duration: 0.001ms !important;
+}
+
 /* ── Base styles ─────────────────────────────────────────────────────────── */
 
 @layer base {

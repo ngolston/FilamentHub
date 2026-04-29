@@ -5,6 +5,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { router } from './router'
 import { useAuthStore } from './stores/auth'
 import { useThemeApplier } from './hooks/useTheme'
+import { useAppearanceApplier } from './hooks/useAppearance'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,6 +26,7 @@ function AuthInitializer({ children }: { children: React.ReactNode }) {
 
 function ThemeApplier() {
   useThemeApplier()
+  useAppearanceApplier()
   return null
 }
 
