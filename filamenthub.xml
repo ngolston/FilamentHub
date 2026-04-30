@@ -1,0 +1,52 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>FilamentHub</Name>
+  <Repository>ace2123/filamenthub:latest</Repository>
+  <Registry>https://hub.docker.com/r/ace2123/filamenthub</Registry>
+  <Network>bridge</Network>
+  <Privileged>false</Privileged>
+  <Shell>sh</Shell>
+  <Icon>https://raw.githubusercontent.com/ngolston/FilamentHub/main/images/icon.png</Icon>
+  <Banner>https://raw.githubusercontent.com/ngolston/FilamentHub/main/images/banner.png</Banner>
+  <Category>Tools:System</Category>
+  <WebUI>http://[IP]:[PORT:80]/</WebUI>
+  <Overview>
+    FilamentHub is a self-hosted 3D printer filament inventory manager.
+
+    Track your spool collection, log print jobs, get run-out forecasts, print QR labels, and view full usage analytics — all running on your own hardware with a single container.
+
+    Features: spool inventory, multi-color spools, print job logging, analytics, run-out forecast, QR labels, reorder list, alerts (email / Discord / webhooks), Bambu Lab AMS integration, community filament database, Spoolman import, CSV/JSON export, 5 themes, 8 accent colors, 2FA, API keys, and multi-user roles.
+
+    After starting the container, open the WebUI and create your first account. Set FRONTEND_URL to the URL your browser uses to reach this container (e.g. http://192.168.1.50 or http://192.168.1.50:8080 if you changed the port).
+
+    Generate a secure SECRET_KEY with: openssl rand -hex 32
+  </Overview>
+  <Support>https://github.com/ngolston/FilamentHub/issues</Support>
+  <Project>https://github.com/ngolston/FilamentHub</Project>
+  <Beta>false</Beta>
+  <MinVer>6.9.0</MinVer>
+  <Date>2026-04-30</Date>
+
+  <!-- ── Port ──────────────────────────────────────────────────────────────── -->
+  <Config Name="Web UI Port" Target="80" Default="80" Mode="tcp" Type="Port" Display="always" Required="false" Mask="false">80</Config>
+
+  <!-- ── Data volume ───────────────────────────────────────────────────────── -->
+  <Config Name="Data Directory" Target="/app/data" Default="/mnt/user/appdata/filamenthub" Mode="rw" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/filamenthub</Config>
+
+  <!-- ── Required variables ────────────────────────────────────────────────── -->
+  <Config Name="Secret Key" Target="SECRET_KEY" Default="" Description="JWT signing key used to secure sessions. Generate one with: openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+
+  <Config Name="Frontend URL" Target="FRONTEND_URL" Default="http://192.168.1.50" Description="The full URL your browser uses to reach FilamentHub (no trailing slash). Use your server's LAN IP or domain. Examples: http://192.168.1.50  or  http://192.168.1.50:8080  or  https://filamenthub.yourdomain.com" Type="Variable" Display="always" Required="true" Mask="false">http://192.168.1.50</Config>
+
+  <!-- ── Email (optional) ───────────────────────────────────────────────────── -->
+  <Config Name="SMTP Host" Target="SMTP_HOST" Default="" Description="SMTP server hostname for password-reset emails. Leave blank to disable email — reset links will appear in the container log instead." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="SMTP Port" Target="SMTP_PORT" Default="587" Description="SMTP server port." Type="Variable" Display="advanced" Required="false" Mask="false">587</Config>
+
+  <Config Name="SMTP Username" Target="SMTP_USER" Default="" Description="SMTP login username." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="SMTP Password" Target="SMTP_PASSWORD" Default="" Description="SMTP login password." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+
+  <Config Name="From Address" Target="EMAILS_FROM" Default="noreply@filamenthub.local" Description="From address used on outgoing emails." Type="Variable" Display="advanced" Required="false" Mask="false">noreply@filamenthub.local</Config>
+
+</Container>
