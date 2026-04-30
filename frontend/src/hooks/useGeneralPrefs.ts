@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { usersApi } from '@/api/users'
+import { getRefreshToken } from '@/api/client'
 
 export interface GeneralPrefs {
   view_mode:        'grid' | 'table'
@@ -54,6 +55,7 @@ export function useGeneralPrefs(): GeneralPrefs {
     queryKey: ['ui-prefs'],
     queryFn:  usersApi.getUiPrefs,
     select:   (d) => (d as { general?: GeneralPrefs }).general,
+    enabled:  !!getRefreshToken(),
   })
 
   useEffect(() => {

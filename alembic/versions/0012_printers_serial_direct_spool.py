@@ -26,7 +26,7 @@ def upgrade() -> None:
     if 'direct_spool_id' not in existing:
         op.add_column(
             'printers',
-            sa.Column('direct_spool_id', sa.Integer(), sa.ForeignKey('spools.id', ondelete='SET NULL'), nullable=True),
+            sa.Column('direct_spool_id', sa.Integer(), nullable=True),
         )
 
 
