@@ -1,9 +1,27 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Fields written to / read from the persistent config file in DATA_DIR.
+# This survives container updates even if Unraid resets env vars.
+_PERSIST_FIELDS = (
+    "SECRET_KEY",
+    "FRONTEND_URL",
+    "SMTP_HOST",
+    "SMTP_PORT",
+    "SMTP_USER",
+    "SMTP_PASSWORD",
+    "EMAILS_FROM",
+    "DISCORD_WEBHOOK_URL",
+)
+
+
+def _data_config_path() -> Path:
+    return Path(os.getenv("DATA_DIR", "./data")) / "config.env"
 
 
 class Settings(BaseSettings):
@@ -71,6 +89,33 @@ class Settings(BaseSettings):
         return self.ENVIRONMENT == "production"
 
 
+def _load_persistent_config() -> None:
+    """Load config.env from the data volume without overriding existing env vars."""
+    path = _data_config_path()
+    if path.exists():
+        from dotenv import load_dotenv
+        load_dotenv(path, override=False)
+
+
+def _write_persistent_config(settings: Settings) -> None:
+    """Persist user-configured fields to the data volume on first run."""
+    path = _data_config_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines: list[str] = []
+        for key in _PERSIST_FIELDS:
+            val = getattr(settings, key, None)
+            if val is not None:
+                lines.append(f"{key}={val}")
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    except Exception:
+        pass  # Non-fatal — don't crash if data dir isn't writable yet
+
+
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    _load_persistent_config()
+    settings = Settings()
+    if not _data_config_path().exists():
+        _write_persistent_config(settings)
+    return settings
