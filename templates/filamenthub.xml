@@ -36,7 +36,7 @@
   <!-- ── Required variables ────────────────────────────────────────────────── -->
   <Config Name="Secret Key" Target="SECRET_KEY" Default="" Description="JWT signing key used to secure sessions. Generate one with: openssl rand -hex 32" Type="Variable" Display="always" Required="true" Mask="true"></Config>
 
-  <Config Name="Frontend URL" Target="FRONTEND_URL" Default="http://192.168.1.50" Description="The full URL your browser uses to reach FilamentHub (no trailing slash). Use your server's LAN IP or domain. Examples: http://192.168.1.50  or  http://192.168.1.50:8080  or  https://filamenthub.yourdomain.com" Type="Variable" Display="always" Required="true" Mask="false">http://192.168.1.50</Config>
+  <Config Name="Frontend URL" Target="FRONTEND_URL" Default="" Description="The full URL your browser uses to reach FilamentHub (no trailing slash). Use your server's LAN IP or domain. Examples: http://192.168.1.50  or  http://192.168.1.50:8080  or  https://filamenthub.yourdomain.com" Type="Variable" Display="always" Required="true" Mask="false"></Config>
 
   <!-- ── Email (optional) ───────────────────────────────────────────────────── -->
   <Config Name="SMTP Host" Target="SMTP_HOST" Default="" Description="SMTP server hostname for password-reset emails. Leave blank to disable email — reset links will appear in the container log instead." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
