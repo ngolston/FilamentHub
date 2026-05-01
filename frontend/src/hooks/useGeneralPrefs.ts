@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { usersApi } from '@/api/users'
 import { getRefreshToken } from '@/api/client'
+import { useAuthStore } from '@/stores/auth'
 
 export interface GeneralPrefs {
   view_mode:        'grid' | 'table'
@@ -49,13 +50,14 @@ export function patchStoredGeneralPrefs(patch: Partial<GeneralPrefs>) {
  * flash). Syncs from the API in the background and keeps localStorage current.
  */
 export function useGeneralPrefs(): GeneralPrefs {
+  const isInitialized = useAuthStore((s) => s.isInitialized)
   const [prefs, setPrefs] = useState<GeneralPrefs>(getStoredGeneralPrefs)
 
   const { data } = useQuery({
     queryKey: ['ui-prefs'],
     queryFn:  usersApi.getUiPrefs,
     select:   (d) => (d as { general?: GeneralPrefs }).general,
-    enabled:  !!getRefreshToken(),
+    enabled:  isInitialized && !!getRefreshToken(),
   })
 
   useEffect(() => {
