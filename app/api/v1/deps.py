@@ -65,5 +65,6 @@ def require_role(*roles: UserRole):
     return _check
 
 
-require_admin = require_role(UserRole.admin)
-require_editor = require_role(UserRole.admin, UserRole.editor)
+require_admin    = require_role(UserRole.admin)
+require_editor   = require_role(UserRole.admin, UserRole.editor)
+require_operator = require_role(UserRole.admin, UserRole.editor, UserRole.operator)

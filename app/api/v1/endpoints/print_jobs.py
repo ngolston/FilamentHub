@@ -7,7 +7,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.v1.deps import get_current_user, require_editor
+from app.api.v1.deps import get_current_user, require_operator
 from app.db.session import get_db
 from app.models.models import FilamentProfile, PrintJob, Printer, Spool, User
 from app.schemas.schemas import (
@@ -35,7 +35,7 @@ analytics_router = APIRouter(prefix="/analytics", tags=["analytics"])
 @jobs_router.post("", response_model=PrintJobResponse, status_code=status.HTTP_201_CREATED)
 async def log_print_job(
     body: PrintJobCreate,
-    current_user: User = Depends(require_editor),
+    current_user: User = Depends(require_operator),
     db: AsyncSession = Depends(get_db),
 ):
     """

@@ -39,6 +39,7 @@ def new_uuid() -> str:
 class UserRole(str, PyEnum):
     admin = "admin"
     editor = "editor"
+    operator = "operator"
     viewer = "viewer"
 
 

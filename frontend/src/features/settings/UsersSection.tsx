@@ -7,18 +7,23 @@ import { SettingsCard } from './SettingsCard'
 import { getErrorMessage } from '@/api/client'
 import type { UserResponse } from '@/types/api'
 
-const ROLE_OPTIONS = ['admin', 'editor', 'viewer'] as const
+const ROLE_OPTIONS: { value: string; label: string; description: string }[] = [
+  { value: 'admin',    label: 'Admin',    description: 'Full access including user management' },
+  { value: 'editor',  label: 'Editor',   description: 'Manage inventory: spools, filaments, locations, printers' },
+  { value: 'operator',label: 'Operator', description: 'Log print jobs, weight measurements, and drying sessions' },
+  { value: 'viewer',  label: 'Viewer',   description: 'Read-only access to all data' },
+]
 
-function RoleSelect({ user, onUpdate }: { user: UserResponse; onUpdate: (role: string) => void }) {
+function RoleSelect({ value, onChange }: { value: string; onChange: (role: string) => void }) {
   return (
     <div className="relative">
       <select
-        value={user.role}
-        onChange={(e) => onUpdate(e.target.value)}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
         className="appearance-none rounded-md border border-surface-border bg-surface-2 px-3 py-1.5 pr-7 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary-500"
       >
         {ROLE_OPTIONS.map((r) => (
-          <option key={r} value={r}>{r}</option>
+          <option key={r.value} value={r.value}>{r.label}</option>
         ))}
       </select>
       <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 text-gray-400" />
@@ -132,13 +137,7 @@ function PendingRow({
         <p className="text-xs text-gray-600 mt-0.5">Registered {new Date(user.created_at).toLocaleDateString()}</p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
-        <select
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-          className="appearance-none rounded-md border border-surface-border bg-surface-2 px-2 py-1.5 text-xs text-white focus:outline-none focus:ring-1 focus:ring-primary-500"
-        >
-          {ROLE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-        </select>
+        <RoleSelect value={role} onChange={setRole} />
         <button
           onClick={() => onApprove(role)}
           disabled={loading}
@@ -178,11 +177,12 @@ function UserRow({
           {isSelf && <span className="text-xs text-primary-400">(you)</span>}
         </div>
         <p className="text-xs text-gray-500 truncate">{user.email}</p>
+        <p className="text-xs text-gray-600 mt-0.5">{ROLE_OPTIONS.find((r) => r.value === user.role)?.description}</p>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         {!isSelf ? (
           <>
-            <RoleSelect user={user} onUpdate={onRoleChange} />
+            <RoleSelect value={user.role} onChange={onRoleChange} />
             {confirmDelete ? (
               <>
                 <button

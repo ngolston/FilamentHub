@@ -1,6 +1,6 @@
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
-export type UserRole = 'admin' | 'editor' | 'viewer'
+export type UserRole = 'admin' | 'editor' | 'operator' | 'viewer'
 export type SpoolStatus = 'active' | 'storage' | 'archived'
 export type PrinterStatus = 'idle' | 'printing' | 'paused' | 'error' | 'offline'
 export type PrinterConnectionType = 'octoprint' | 'moonraker' | 'bambu' | 'manual'
