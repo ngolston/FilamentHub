@@ -90,11 +90,18 @@ class Settings(BaseSettings):
 
 
 def _load_persistent_config() -> None:
-    """Load config.env from the data volume without overriding existing env vars."""
+    """Load config.env from the data volume.
+
+    Applies saved values for any field that is absent or empty in the current
+    environment — handles Unraid passing empty-string env vars on container update.
+    """
     path = _data_config_path()
-    if path.exists():
-        from dotenv import load_dotenv
-        load_dotenv(path, override=False)
+    if not path.exists():
+        return
+    from dotenv import dotenv_values
+    for key, value in dotenv_values(path).items():
+        if value and not os.environ.get(key):
+            os.environ[key] = value
 
 
 def _write_persistent_config(settings: Settings) -> None:
@@ -105,7 +112,7 @@ def _write_persistent_config(settings: Settings) -> None:
         lines: list[str] = []
         for key in _PERSIST_FIELDS:
             val = getattr(settings, key, None)
-            if val is not None:
+            if val is not None and val != "":
                 lines.append(f"{key}={val}")
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     except Exception:
@@ -116,6 +123,5 @@ def _write_persistent_config(settings: Settings) -> None:
 def get_settings() -> Settings:
     _load_persistent_config()
     settings = Settings()
-    if not _data_config_path().exists():
-        _write_persistent_config(settings)
+    _write_persistent_config(settings)
     return settings
