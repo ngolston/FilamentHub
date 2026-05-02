@@ -39,6 +39,7 @@ export default function RegisterPage() {
     }
   }, [publicConfig, navigate])
   const [serverError, setServerError] = useState<string | null>(null)
+  const [pending, setPending] = useState(false)
 
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -47,11 +48,36 @@ export default function RegisterPage() {
   async function onSubmit({ display_name, email, password }: FormData) {
     setServerError(null)
     try {
-      await registerUser({ display_name, email, password })
-      navigate('/', { replace: true })
+      const user = await registerUser({ display_name, email, password })
+      if (user?.is_approved) {
+        navigate('/', { replace: true })
+      } else {
+        setPending(true)
+      }
     } catch (err) {
       setServerError(getErrorMessage(err))
     }
+  }
+
+  if (pending) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface px-4">
+        <div className="w-full max-w-sm text-center space-y-4">
+          <div className="flex justify-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary-500 to-accent-500">
+              <Flame className="h-6 w-6 text-white" />
+            </div>
+          </div>
+          <h2 className="text-xl font-bold text-white">Account Pending Approval</h2>
+          <p className="text-sm text-gray-400">
+            Your account has been created. An admin will review your request and grant access shortly.
+          </p>
+          <Link to="/login" className="inline-block text-sm text-primary-400 hover:text-primary-300">
+            Back to sign in
+          </Link>
+        </div>
+      </div>
+    )
   }
 
   return (

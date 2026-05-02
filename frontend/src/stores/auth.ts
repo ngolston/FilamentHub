@@ -9,7 +9,7 @@ interface AuthState {
   isInitialized: boolean
 
   login: (credentials: UserLogin) => Promise<void>
-  register: (data: UserRegister) => Promise<void>
+  register: (data: UserRegister) => Promise<UserResponse>
   logout: () => void
   fetchMe: () => Promise<void>
   initialize: () => Promise<void>
@@ -36,12 +36,17 @@ export const useAuthStore = create<AuthState>((set) => ({
   register: async (data) => {
     set({ isLoading: true })
     try {
-      await authApi.register(data)
-      // Auto-login after registration
-      const tokens = await authApi.login({ email: data.email, password: data.password })
-      setTokens(tokens.access_token, tokens.refresh_token)
-      const user = await authApi.me()
-      set({ user, isLoading: false })
+      const newUser = await authApi.register(data)
+      if (newUser.is_approved) {
+        // First user (admin) — auto-login
+        const tokens = await authApi.login({ email: data.email, password: data.password })
+        setTokens(tokens.access_token, tokens.refresh_token)
+        const user = await authApi.me()
+        set({ user, isLoading: false })
+      } else {
+        set({ isLoading: false })
+      }
+      return newUser
     } catch (err) {
       set({ isLoading: false })
       throw err

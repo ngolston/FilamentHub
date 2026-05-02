@@ -76,6 +76,7 @@ export interface UserResponse {
   role: UserRole
   is_active: boolean
   is_verified: boolean
+  is_approved: boolean
   totp_enabled: boolean
   preferred_weight_unit: string
   preferred_temp_unit: string

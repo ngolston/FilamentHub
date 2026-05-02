@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import {
   Bell, Database, Flame, Key, LayoutGrid,
-  MapPin, Palette, Settings2, ShieldCheck, Sliders, Trash2,
+  MapPin, Palette, Settings2, ShieldCheck, Sliders, Trash2, Users,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
+import { useAuthStore } from '@/stores/auth'
 import { ProfileSection }      from './ProfileSection'
 import { GeneralSection }      from './GeneralSection'
 import { AppearanceSection }   from './AppearanceSection'
@@ -15,27 +16,36 @@ import { ApiWebhooksSection }  from './ApiWebhooksSection'
 import { DataBackupSection }   from './DataBackupSection'
 import { LocationsSection }    from './LocationsSection'
 import { DangerZoneSection }   from './DangerZoneSection'
+import { UsersSection }        from './UsersSection'
 
-const SECTIONS = [
-  { id: 'profile',      label: 'Profile',         icon: Flame,        component: ProfileSection      },
-  { id: 'general',      label: 'General',          icon: Settings2,    component: GeneralSection      },
-  { id: 'appearance',   label: 'Appearance',       icon: Palette,      component: AppearanceSection   },
-  { id: 'units',        label: 'Units & Format',   icon: Sliders,      component: UnitsSection        },
-  { id: 'security',     label: 'Security',         icon: ShieldCheck,  component: SecuritySection     },
-  { id: 'locations',    label: 'Locations',        icon: MapPin,       component: LocationsSection    },
-  { id: 'notifications',label: 'Notifications',    icon: Bell,         component: NotificationsSection },
-  { id: 'integrations', label: 'Integrations',     icon: LayoutGrid,   component: IntegrationsSection },
-  { id: 'api',          label: 'API & Webhooks',   icon: Key,          component: ApiWebhooksSection  },
-  { id: 'data',         label: 'Data & Backup',    icon: Database,     component: DataBackupSection   },
-  { id: 'danger',       label: 'Danger Zone',      icon: Trash2,       component: DangerZoneSection,  danger: true },
-] as const
+const BASE_SECTIONS = [
+  { id: 'profile',      label: 'Profile',         icon: Flame,        component: ProfileSection,      danger: false },
+  { id: 'general',      label: 'General',          icon: Settings2,    component: GeneralSection,      danger: false },
+  { id: 'appearance',   label: 'Appearance',       icon: Palette,      component: AppearanceSection,   danger: false },
+  { id: 'units',        label: 'Units & Format',   icon: Sliders,      component: UnitsSection,        danger: false },
+  { id: 'security',     label: 'Security',         icon: ShieldCheck,  component: SecuritySection,     danger: false },
+  { id: 'locations',    label: 'Locations',        icon: MapPin,       component: LocationsSection,    danger: false },
+  { id: 'notifications',label: 'Notifications',    icon: Bell,         component: NotificationsSection,danger: false },
+  { id: 'integrations', label: 'Integrations',     icon: LayoutGrid,   component: IntegrationsSection, danger: false },
+  { id: 'api',          label: 'API & Webhooks',   icon: Key,          component: ApiWebhooksSection,  danger: false },
+  { id: 'data',         label: 'Data & Backup',    icon: Database,     component: DataBackupSection,   danger: false },
+  { id: 'danger',       label: 'Danger Zone',      icon: Trash2,       component: DangerZoneSection,   danger: true  },
+]
 
-type SectionId = typeof SECTIONS[number]['id']
+const USERS_SECTION = { id: 'users', label: 'Users', icon: Users, component: UsersSection, danger: false }
+
+type SectionId = typeof BASE_SECTIONS[number]['id'] | 'users'
 
 export default function SettingsPage() {
+  const user = useAuthStore((s) => s.user)
   const [active, setActive] = useState<SectionId>('profile')
 
-  const Section = SECTIONS.find((s) => s.id === active)?.component ?? ProfileSection
+  // Insert Users section after Security (index 4) for admins
+  const sections = user?.role === 'admin'
+    ? [...BASE_SECTIONS.slice(0, 5), USERS_SECTION, ...BASE_SECTIONS.slice(5)]
+    : BASE_SECTIONS
+
+  const Section = sections.find((s) => s.id === active)?.component ?? ProfileSection
 
   return (
     <div className="flex h-full min-h-0">
@@ -44,13 +54,13 @@ export default function SettingsPage() {
         <p className="px-3 mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
           Settings
         </p>
-        {SECTIONS.map((s) => {
+        {sections.map((s) => {
           const Icon = s.icon
-          const isDanger = 'danger' in s && s.danger
+          const isDanger = s.danger
           return (
             <button
               key={s.id}
-              onClick={() => setActive(s.id)}
+              onClick={() => setActive(s.id as SectionId)}
               className={cn(
                 'flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors text-left w-full',
                 active === s.id
@@ -71,12 +81,12 @@ export default function SettingsPage() {
 
       {/* ── Mobile tab bar ──────────────────────────────────────────── */}
       <div className="lg:hidden border-b border-surface-border px-4 pt-4 pb-0 overflow-x-auto flex gap-1 shrink-0 w-full">
-        {SECTIONS.map((s) => {
-          const isDanger = 'danger' in s && s.danger
+        {sections.map((s) => {
+          const isDanger = s.danger
           return (
             <button
               key={s.id}
-              onClick={() => setActive(s.id)}
+              onClick={() => setActive(s.id as SectionId)}
               className={cn(
                 'shrink-0 rounded-t-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors border-b-2',
                 active === s.id

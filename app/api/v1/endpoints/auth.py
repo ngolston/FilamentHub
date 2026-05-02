@@ -24,7 +24,7 @@ from app.core.security import (
     verify_totp,
 )
 from app.db.session import get_db
-from app.models.models import PasswordResetToken, RefreshToken, User
+from app.models.models import PasswordResetToken, RefreshToken, User, UserRole
 from app.schemas.schemas import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
@@ -80,10 +80,9 @@ async def _store_refresh_token(
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: UserRegister, request: Request, db: AsyncSession = Depends(get_db)):
-    """Create a new account. Sends a verification email if SMTP is configured."""
+    """Create a new account. First user becomes admin. Subsequent users require admin approval."""
     auth_limiter.check(request, "register")
 
-    # Check if registration is enabled in system config
     from app.models.models import SystemConfig
     cfg_result = await db.execute(select(SystemConfig).where(SystemConfig.id == 1))
     cfg = cfg_result.scalar_one_or_none()
@@ -94,13 +93,20 @@ async def register(body: UserRegister, request: Request, db: AsyncSession = Depe
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
 
+    from sqlalchemy import func
+    count_result = await db.execute(select(func.count()).select_from(User))
+    user_count = count_result.scalar_one()
+    is_first_user = user_count == 0
+
     needs_verify = bool(settings.SMTP_HOST)
     user = User(
         email=body.email,
         hashed_password=hash_password(body.password),
         display_name=body.display_name,
         maker_name=body.maker_name,
-        is_verified=not needs_verify,   # auto-verify if no SMTP
+        is_verified=not needs_verify,
+        role=UserRole.admin if is_first_user else UserRole.editor,
+        is_approved=is_first_user,
     )
     db.add(user)
     await db.flush()
@@ -130,6 +136,8 @@ async def login(body: UserLogin, request: Request, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account deactivated")
+    if not user.is_approved:
+        raise HTTPException(status_code=403, detail="Your account is pending admin approval")
 
     user.last_login_at = datetime.now(UTC)
     raw_refresh = create_refresh_token(user.id)

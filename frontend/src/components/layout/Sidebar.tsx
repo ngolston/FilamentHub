@@ -1,6 +1,8 @@
 import { NavLink } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { cn } from '@/utils/cn'
 import { useAuth } from '@/hooks/useAuth'
+import { adminApi } from '@/api/admin'
 import {
   LayoutDashboard,
   Package,
@@ -45,6 +47,14 @@ interface SidebarProps {
 export function Sidebar({ onClose }: SidebarProps) {
   const { user, logout } = useAuth()
 
+  const { data: pendingData } = useQuery({
+    queryKey: ['admin', 'pending-count'],
+    queryFn: adminApi.pendingCount,
+    enabled: user?.role === 'admin',
+    refetchInterval: 60_000,
+  })
+  const pendingCount = pendingData?.count ?? 0
+
   return (
     <aside className="flex h-full w-60 flex-col bg-surface-1 border-r border-surface-border">
       {/* Logo */}
@@ -74,6 +84,11 @@ export function Sidebar({ onClose }: SidebarProps) {
           >
             <Icon className="h-4 w-4 shrink-0" />
             {label}
+            {to === '/settings' && pendingCount > 0 && (
+              <span className="ml-auto flex h-4 w-4 items-center justify-center rounded-full bg-primary-500 text-[10px] font-bold text-white">
+                {pendingCount}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>
