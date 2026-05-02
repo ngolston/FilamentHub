@@ -17,6 +17,7 @@ import {
   LogOut,
   ShoppingCart,
   BarChart3,
+  MapPin,
 } from 'lucide-react'
 
 interface NavItem {
@@ -28,8 +29,9 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/',             label: 'Dashboard',  icon: LayoutDashboard },
-  { to: '/spools',       label: 'Spools',     icon: Package },
-  { to: '/printers',     label: 'Devices',           icon: Printer },
+  { to: '/spools',       label: 'Spools',      icon: Package },
+  { to: '/locations',    label: 'Locations',   icon: MapPin },
+  { to: '/printers',     label: 'Devices',     icon: Printer },
   { to: '/print-jobs',   label: 'Print Jobs',        icon: ClipboardList },
   { to: '/filaments',    label: 'Filament Profiles', icon: Database },
   { to: '/community',    label: 'Community Filament Database', icon: Globe },

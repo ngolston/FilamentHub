@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Bell, Database, Flame, Key, LayoutGrid,
-  MapPin, Palette, Settings2, ShieldCheck, Sliders, Trash2, Users,
+  Palette, Settings2, ShieldCheck, Sliders, Trash2, Users,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/stores/auth'
@@ -14,7 +14,6 @@ import { NotificationsSection } from './NotificationsSection'
 import { IntegrationsSection } from './IntegrationsSection'
 import { ApiWebhooksSection }  from './ApiWebhooksSection'
 import { DataBackupSection }   from './DataBackupSection'
-import { LocationsSection }    from './LocationsSection'
 import { DangerZoneSection }   from './DangerZoneSection'
 import { UsersSection }        from './UsersSection'
 
@@ -24,7 +23,6 @@ const BASE_SECTIONS = [
   { id: 'appearance',   label: 'Appearance',       icon: Palette,      component: AppearanceSection,   danger: false },
   { id: 'units',        label: 'Units & Format',   icon: Sliders,      component: UnitsSection,        danger: false },
   { id: 'security',     label: 'Security',         icon: ShieldCheck,  component: SecuritySection,     danger: false },
-  { id: 'locations',    label: 'Locations',        icon: MapPin,       component: LocationsSection,    danger: false },
   { id: 'notifications',label: 'Notifications',    icon: Bell,         component: NotificationsSection,danger: false },
   { id: 'integrations', label: 'Integrations',     icon: LayoutGrid,   component: IntegrationsSection, danger: false },
   { id: 'api',          label: 'API & Webhooks',   icon: Key,          component: ApiWebhooksSection,  danger: false },

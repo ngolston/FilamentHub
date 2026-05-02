@@ -224,6 +224,7 @@ class LocationResponse(OrmBase):
     name: str
     description: str | None
     is_dry_box: bool
+    spool_count: int = 0
 
 
 # ── Spools ────────────────────────────────────────────────────────────────────

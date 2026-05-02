@@ -198,6 +198,7 @@ export interface LocationResponse {
   name: string
   description: string | null
   is_dry_box: boolean
+  spool_count: number
 }
 
 export interface LocationCreate {

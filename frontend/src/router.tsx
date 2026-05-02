@@ -24,6 +24,7 @@ const QrLabelsPage    = lazy(() => import('@/features/qr-labels/QrLabelsPage'))
 const SettingsPage    = lazy(() => import('@/features/settings/SettingsPage'))
 const ReorderPage     = lazy(() => import('@/features/reorder/ReorderPage'))
 const AnalyticsPage   = lazy(() => import('@/features/analytics/AnalyticsPage'))
+const LocationsPage   = lazy(() => import('@/features/locations/LocationsPage'))
 
 function RequireAuth() {
   const { user, isInitialized } = useAuthStore()
@@ -68,6 +69,7 @@ export const router = createBrowserRouter([
           { path: '/spools',      element: <SpoolsPage /> },
           { path: '/spools/new',       element: <AddSpoolPage /> },
           { path: '/spools/:id/edit', element: <EditSpoolPage /> },
+          { path: '/locations',   element: <LocationsPage /> },
           { path: '/printers',    element: <PrintersPage /> },
           { path: '/print-jobs',  element: <PrintJobsPage /> },
           { path: '/filaments',   element: <FilamentsPage /> },
