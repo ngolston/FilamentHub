@@ -94,14 +94,19 @@ def _load_persistent_config() -> None:
 
     Applies saved values for any field that is absent or empty in the current
     environment — handles Unraid passing empty-string env vars on container update.
+    Auto-generates SECRET_KEY if nothing provides one, so the app never starts
+    with an empty signing key.
     """
     path = _data_config_path()
-    if not path.exists():
-        return
-    from dotenv import dotenv_values
-    for key, value in dotenv_values(path).items():
-        if value and not os.environ.get(key):
-            os.environ[key] = value
+    if path.exists():
+        from dotenv import dotenv_values
+        for key, value in dotenv_values(path).items():
+            if value and not os.environ.get(key):
+                os.environ[key] = value
+
+    if not os.environ.get("SECRET_KEY"):
+        import secrets
+        os.environ["SECRET_KEY"] = secrets.token_hex(32)
 
 
 def _write_persistent_config(settings: Settings) -> None:
