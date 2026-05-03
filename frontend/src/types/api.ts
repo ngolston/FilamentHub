@@ -1,6 +1,6 @@
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
-export type UserRole = 'admin' | 'editor' | 'viewer'
+export type UserRole = 'admin' | 'editor' | 'operator' | 'viewer'
 export type SpoolStatus = 'active' | 'storage' | 'archived'
 export type PrinterStatus = 'idle' | 'printing' | 'paused' | 'error' | 'offline'
 export type PrinterConnectionType = 'octoprint' | 'moonraker' | 'bambu' | 'manual'
@@ -76,6 +76,7 @@ export interface UserResponse {
   role: UserRole
   is_active: boolean
   is_verified: boolean
+  is_approved: boolean
   totp_enabled: boolean
   preferred_weight_unit: string
   preferred_temp_unit: string
@@ -197,6 +198,7 @@ export interface LocationResponse {
   name: string
   description: string | null
   is_dry_box: boolean
+  spool_count: number
 }
 
 export interface LocationCreate {

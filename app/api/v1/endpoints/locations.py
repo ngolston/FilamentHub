@@ -1,12 +1,12 @@
 """Storage location endpoints."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import get_current_user, require_editor
 from app.db.session import get_db
-from app.models.models import StorageLocation, User
+from app.models.models import Spool, StorageLocation, User
 from app.schemas.schemas import LocationCreate, LocationResponse
 
 router = APIRouter(prefix="/locations", tags=["locations"])
@@ -17,8 +17,26 @@ async def list_locations(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(StorageLocation).order_by(StorageLocation.name))
-    return result.scalars().all()
+    locs_result = await db.execute(select(StorageLocation).order_by(StorageLocation.name))
+    locations = locs_result.scalars().all()
+
+    counts_result = await db.execute(
+        select(Spool.location_id, func.count(Spool.id).label("cnt"))
+        .where(Spool.location_id.isnot(None))
+        .group_by(Spool.location_id)
+    )
+    counts = {row.location_id: row.cnt for row in counts_result}
+
+    return [
+        LocationResponse(
+            id=loc.id,
+            name=loc.name,
+            description=loc.description,
+            is_dry_box=loc.is_dry_box,
+            spool_count=counts.get(loc.id, 0),
+        )
+        for loc in locations
+    ]
 
 
 @router.post("", response_model=LocationResponse, status_code=status.HTTP_201_CREATED)

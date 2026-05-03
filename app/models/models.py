@@ -39,6 +39,7 @@ def new_uuid() -> str:
 class UserRole(str, PyEnum):
     admin = "admin"
     editor = "editor"
+    operator = "operator"
     viewer = "viewer"
 
 
@@ -89,6 +90,7 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.editor)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=True)   # True = email confirmed
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=True)   # True = admin approved
 
     # 2FA
     totp_secret: Mapped[str | None] = mapped_column(String(32))

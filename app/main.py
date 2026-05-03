@@ -32,6 +32,7 @@ from app.api.v1.endpoints.community import router as community_router
 from app.api.v1.endpoints.webhooks import router as webhooks_router
 from app.api.v1.endpoints.system import router as system_router
 from app.api.v1.endpoints.integrations import router as integrations_router
+from app.api.v1.endpoints.admin import router as admin_router
 from app.core.config import get_settings
 from app.core.scheduler import create_scheduler
 from app.db.session import engine
@@ -113,6 +114,7 @@ app.include_router(community_router, prefix=V1)
 app.include_router(webhooks_router,  prefix=V1)
 app.include_router(system_router,      prefix=V1)
 app.include_router(integrations_router, prefix=V1)
+app.include_router(admin_router,        prefix=V1)
 
 # ── Health & info ─────────────────────────────────────────────────────────────
 

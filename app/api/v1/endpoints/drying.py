@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.deps import get_current_user, require_editor
+from app.api.v1.deps import get_current_user, require_operator
 from app.db.session import get_db
 from app.models.models import DryingSession, Spool, User
 from app.schemas.schemas import DryingSessionCreate, DryingSessionResponse
@@ -20,7 +20,7 @@ drying_router = APIRouter(prefix="/drying-sessions", tags=["drying"])
 async def start_drying(
     spool_id: int,
     body: DryingSessionCreate,
-    current_user: User = Depends(require_editor),
+    current_user: User = Depends(require_operator),
     db: AsyncSession = Depends(get_db),
 ):
     spool = await db.get(Spool, spool_id)
@@ -38,7 +38,7 @@ async def start_drying(
 async def finish_drying(
     session_id: int,
     humidity_after: float | None = None,
-    current_user: User = Depends(require_editor),
+    current_user: User = Depends(require_operator),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(

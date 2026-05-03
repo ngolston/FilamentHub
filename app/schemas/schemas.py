@@ -81,6 +81,7 @@ class UserResponse(OrmBase):
     role: str
     is_active: bool
     is_verified: bool
+    is_approved: bool
     totp_enabled: bool
     preferred_weight_unit: str
     preferred_temp_unit: str
@@ -223,6 +224,7 @@ class LocationResponse(OrmBase):
     name: str
     description: str | None
     is_dry_box: bool
+    spool_count: int = 0
 
 
 # ── Spools ────────────────────────────────────────────────────────────────────
@@ -585,6 +587,12 @@ class CostAnalytics(BaseModel):
 
 
 # ── Webhooks ──────────────────────────────────────────────────────────────────
+
+class AdminUserUpdate(BaseModel):
+    role: str | None = None
+    is_approved: bool | None = None
+    is_active: bool | None = None
+
 
 class WebhookCreate(BaseModel):
     name: Annotated[str, Field(min_length=1, max_length=100)]

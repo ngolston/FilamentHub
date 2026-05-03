@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.api.v1.deps import get_current_user, require_editor
+from app.api.v1.deps import get_current_user, require_editor, require_operator
 from app.db.session import get_db
 from app.models.models import FilamentProfile, Spool, StorageLocation, User, WeightLog
 from app.schemas.schemas import (
@@ -174,7 +174,7 @@ async def upload_photo(
 async def log_weight(
     spool_id: int,
     body: WeightLogCreate,
-    current_user: User = Depends(require_editor),
+    current_user: User = Depends(require_operator),
     db: AsyncSession = Depends(get_db),
 ):
     """
