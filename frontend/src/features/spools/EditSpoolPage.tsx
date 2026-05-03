@@ -1506,8 +1506,8 @@ export default function EditSpoolPage() {
             )}
           </Section>
 
-          {/* Section 5: Storage */}
-          <Section label="Storage">
+          {/* Section 5: Storage — hidden when Active with a printer slot assigned */}
+          {!(status === 'active' && assignment !== null) && <Section label="Storage">
             <SmartDropdown
               label="Storage location"
               items={locations}
@@ -1532,7 +1532,7 @@ export default function EditSpoolPage() {
                 onRemove={() => { setValue('location_id', undefined); setSelectedLocation(undefined) }}
               />
             )}
-          </Section>
+          </Section>}
 
           {/* Section 6: Purchase & Supplier */}
           <Section label="Purchase & Supplier">
