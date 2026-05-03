@@ -160,21 +160,25 @@ function SlotTile({ label, spool }: { label: string; spool: SpoolResponse | unde
 function PrinterGroup({
   printer,
   locations,
-  spoolsByLocation,
+  spoolMap,
   onDeleteLocation,
   deletingId,
 }: {
   printer: PrinterResponse
   locations: LocationResponse[]
-  spoolsByLocation: Record<number, SpoolResponse[]>
+  spoolMap: Map<number, SpoolResponse>
   onDeleteLocation: (loc: LocationResponse) => void
   deletingId: number | null
 }) {
-  const extLoc = locations.find((l) => l.slot_type === 'ext')
+  const extLoc  = locations.find((l) => l.slot_type === 'ext')
   const amsLocs = locations.filter((l) => l.slot_type === 'ams')
-
-  // Group AMS locations by unit index
   const unitIndices = [...new Set(amsLocs.map((l) => l.ams_unit_index ?? 0))].sort((a, b) => a - b)
+
+  // Source of truth for slot occupancy: printer.direct_spool_id / ams_units[].slots[].spool_id
+  const extSpool = printer.direct_spool_id ? spoolMap.get(printer.direct_spool_id) : undefined
+  const filledCount =
+    (printer.direct_spool_id ? 1 : 0) +
+    printer.ams_units.reduce((n, u) => n + u.slots.filter((s) => s.spool_id !== null).length, 0)
 
   return (
     <div className="rounded-2xl border border-surface-border bg-surface-1 overflow-hidden shadow-sm">
@@ -198,18 +202,16 @@ function PrinterGroup({
           <div>
             <p className="mb-2 text-xs font-medium text-gray-500 uppercase tracking-wider">External</p>
             <div className="w-1/4 min-w-[4rem]">
-              <SlotTile
-                label="Ext 1"
-                spool={spoolsByLocation[extLoc.id]?.[0]}
-              />
+              <SlotTile label="Ext 1" spool={extSpool} />
             </div>
           </div>
         )}
 
         {/* AMS units */}
         {unitIndices.map((unitIdx) => {
-          const letter = String.fromCharCode(65 + unitIdx)
-          const slots = amsLocs
+          const letter  = String.fromCharCode(65 + unitIdx)
+          const unit    = printer.ams_units.find((u) => u.unit_index === unitIdx)
+          const slotLocs = amsLocs
             .filter((l) => l.ams_unit_index === unitIdx)
             .sort((a, b) => (a.ams_slot_index ?? 0) - (b.ams_slot_index ?? 0))
 
@@ -217,13 +219,13 @@ function PrinterGroup({
             <div key={unitIdx}>
               <p className="mb-2 text-xs font-medium text-gray-500 uppercase tracking-wider">AMS {letter}</p>
               <div className="grid grid-cols-4 gap-2">
-                {slots.map((loc, i) => (
-                  <SlotTile
-                    key={loc.id}
-                    label={`${letter}${i + 1}`}
-                    spool={spoolsByLocation[loc.id]?.[0]}
-                  />
-                ))}
+                {slotLocs.map((loc, i) => {
+                  const amsSlot   = unit?.slots.find((s) => s.slot_index === loc.ams_slot_index)
+                  const slotSpool = amsSlot?.spool_id ? spoolMap.get(amsSlot.spool_id) : undefined
+                  return (
+                    <SlotTile key={loc.id} label={`${letter}${i + 1}`} spool={slotSpool} />
+                  )
+                })}
               </div>
             </div>
           )
@@ -233,8 +235,7 @@ function PrinterGroup({
       {/* Footer */}
       <div className="flex items-center gap-2 border-t border-surface-border bg-surface-2/40 px-4 py-2.5">
         <span className="text-xs text-gray-600">
-          {locations.reduce((n, l) => n + (spoolsByLocation[l.id]?.length ?? 0), 0)} /{' '}
-          {locations.length} slots filled
+          {filledCount} / {locations.length} slots filled
         </span>
         <div className="ml-auto flex items-center gap-1">
           {locations.map((loc) => {
@@ -242,11 +243,8 @@ function PrinterGroup({
             return confirm ? (
               <span key={loc.id} className="flex items-center gap-1 text-xs">
                 <span className="text-gray-400">Delete {loc.name}?</span>
-                <button
-                  onClick={() => onDeleteLocation(loc)}
-                  disabled={deletingId === loc.id}
-                  className="text-red-400 hover:text-red-300 font-medium"
-                >
+                <button onClick={() => onDeleteLocation(loc)} disabled={deletingId === loc.id}
+                  className="text-red-400 hover:text-red-300 font-medium">
                   {deletingId === loc.id ? '…' : 'Yes'}
                 </button>
                 <button onClick={() => setConfirm(false)} className="text-gray-500 hover:text-gray-300">No</button>
@@ -372,8 +370,23 @@ export default function LocationsPage() {
 
   const allSpools = spoolsData?.items ?? []
 
+  // Spool IDs actually loaded into a printer slot (source of truth: printer data)
+  const slottedSpoolIds = new Set<number>()
+  for (const printer of printers) {
+    if (printer.direct_spool_id) slottedSpoolIds.add(printer.direct_spool_id)
+    for (const unit of printer.ams_units) {
+      for (const slot of unit.slots) {
+        if (slot.spool_id) slottedSpoolIds.add(slot.spool_id)
+      }
+    }
+  }
+
+  // Fast lookup map for printer group slot tiles
+  const spoolMap = new Map(allSpools.map((s) => [s.id, s]))
+
+  // Standalone location cards only show spools NOT in a printer slot
   const spoolsByLocation = allSpools.reduce<Record<number, SpoolResponse[]>>((acc, spool) => {
-    if (spool.location) {
+    if (spool.location && !slottedSpoolIds.has(spool.id)) {
       const id = spool.location.id
       acc[id] = acc[id] ?? []
       acc[id].push(spool)
@@ -453,7 +466,7 @@ export default function LocationsPage() {
                       key={printerId}
                       printer={printer}
                       locations={locs}
-                      spoolsByLocation={spoolsByLocation}
+                      spoolMap={spoolMap}
                       onDeleteLocation={(loc) => deleteMutation.mutate(loc.id)}
                       deletingId={deletingId}
                     />

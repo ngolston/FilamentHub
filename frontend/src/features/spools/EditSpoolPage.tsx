@@ -1093,10 +1093,31 @@ export default function EditSpoolPage() {
         ? (data.initial_weight ?? 0) * 1000
         : (data.initial_weight ?? 0)
 
+      // When active with a printer slot assigned, sync location_id to the slot's location
+      let locationId: number | undefined = data.location_id || undefined
+      if (status === 'active' && assignment !== null) {
+        if (assignment.type === 'direct') {
+          locationId = locations.find((l) => l.printer_id === assignment.printerId && l.slot_type === 'ext')?.id
+        } else {
+          const printer = printers.find((p) => p.id === assignment.printerId)
+          const unit = printer?.ams_units.find((u) => u.id === assignment.unitId)
+          if (unit) {
+            locationId = locations.find((l) =>
+              l.printer_id === assignment.printerId &&
+              l.slot_type === 'ams' &&
+              l.ams_unit_index === unit.unit_index &&
+              l.ams_slot_index === assignment.slotIndex,
+            )?.id
+          } else {
+            locationId = undefined
+          }
+        }
+      }
+
       const updated = await spoolsApi.update(Number(id), {
         filament_id:    data.filament_id  || undefined,
         brand_id:       data.brand_id     || undefined,
-        location_id:    data.location_id  || undefined,
+        location_id:    locationId,
         name:           data.name         || undefined,
         lot_nr:         data.lot_nr       || undefined,
         photo_url:      !photo ? (photoUrl || null) : undefined,
