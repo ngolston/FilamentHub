@@ -34,7 +34,12 @@ def create_access_token(subject: str | Any, expires_delta: timedelta | None = No
 
 def create_refresh_token(subject: str | Any) -> str:
     expire = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    payload = {"sub": str(subject), "exp": expire, "type": "refresh"}
+    payload = {
+        "sub": str(subject),
+        "exp": expire,
+        "type": "refresh",
+        "jti": secrets.token_hex(16),  # ensures uniqueness even within the same second
+    }
     return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
