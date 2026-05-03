@@ -161,14 +161,12 @@ function PrinterGroup({
   printer,
   locations,
   spoolsByLocation,
-  onEditLocation,
   onDeleteLocation,
   deletingId,
 }: {
   printer: PrinterResponse
   locations: LocationResponse[]
   spoolsByLocation: Record<number, SpoolResponse[]>
-  onEditLocation: (loc: LocationResponse) => void
   onDeleteLocation: (loc: LocationResponse) => void
   deletingId: number | null
 }) {
@@ -456,7 +454,6 @@ export default function LocationsPage() {
                       printer={printer}
                       locations={locs}
                       spoolsByLocation={spoolsByLocation}
-                      onEditLocation={openEdit}
                       onDeleteLocation={(loc) => deleteMutation.mutate(loc.id)}
                       deletingId={deletingId}
                     />
