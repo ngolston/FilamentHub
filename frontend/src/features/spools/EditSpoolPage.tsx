@@ -15,7 +15,7 @@ import { printersApi } from '@/api/printers'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { getErrorMessage } from '@/api/client'
-import type { FilamentProfileResponse, BrandResponse, LocationResponse, SpoolStatus, PrinterResponse } from '@/types/api'
+import type { FilamentProfileResponse, BrandResponse, LocationResponse, SpoolResponse, SpoolStatus, PrinterResponse } from '@/types/api'
 
 // ── Assignment types ──────────────────────────────────────────────────────────
 type SlotAssignment =
@@ -776,6 +776,120 @@ function PrinterAssignmentPicker({
   )
 }
 
+// ── SlotConflictDialog ────────────────────────────────────────────────────────
+
+function SlotConflictDialog({
+  targetLocation,
+  occupyingSpool,
+  loadingOccupier,
+  locations,
+  movePending,
+  onKeep,
+  onMove,
+}: {
+  targetLocation: LocationResponse
+  occupyingSpool: SpoolResponse | null
+  loadingOccupier: boolean
+  locations: LocationResponse[]
+  movePending: boolean
+  onKeep: () => void
+  onMove: (destLocationId: number | undefined) => void
+}) {
+  const [moveMode, setMoveMode] = useState(false)
+  const [destId, setDestId]     = useState<string>('')
+
+  const moveTargets = locations.filter((l) => l.id !== targetLocation.id)
+  const spoolLabel  = occupyingSpool
+    ? (occupyingSpool.name ?? occupyingSpool.filament?.name ?? occupyingSpool.filament?.material ?? `Spool #${occupyingSpool.id}`)
+    : null
+
+  function confirmMove() {
+    if (!destId) return
+    onMove(destId === '0' ? undefined : Number(destId))
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onKeep} />
+      <div className="relative w-full max-w-md rounded-2xl border border-surface-border bg-surface-1 p-6 shadow-2xl space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-white">Slot already occupied</h2>
+          <button type="button" onClick={onKeep} className="rounded-lg p-1.5 text-gray-400 hover:bg-surface-2 hover:text-white">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {loadingOccupier ? (
+          <div className="flex items-center gap-2 text-sm text-gray-400 py-2">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-surface-border border-t-primary-500" />
+            Checking slot…
+          </div>
+        ) : (
+          <p className="text-sm text-gray-300">
+            <span className="font-medium text-white">{targetLocation.name}</span> is already occupied
+            {spoolLabel ? <> by <span className="text-primary-300">{spoolLabel}</span></> : ' by another spool'}.
+          </p>
+        )}
+
+        {!loadingOccupier && !moveMode && (
+          <div className="flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={onKeep}
+              className="w-full rounded-lg border border-surface-border bg-surface-2 px-4 py-3 text-sm text-left text-gray-300 hover:bg-surface-3 hover:text-white transition-colors"
+            >
+              <span className="font-medium">Keep original spool in this slot</span>
+              <span className="block text-[11px] text-gray-500 mt-0.5">Don't change the location selection</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMoveMode(true)}
+              className="w-full rounded-lg border border-primary-700/40 bg-primary-900/20 px-4 py-3 text-sm text-left text-primary-300 hover:bg-primary-900/30 hover:text-primary-200 transition-colors"
+            >
+              <span className="font-medium">Move original spool to another location</span>
+              <span className="block text-[11px] text-primary-500/80 mt-0.5">Then assign this slot to the current spool</span>
+            </button>
+          </div>
+        )}
+
+        {!loadingOccupier && moveMode && (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500">
+              Where should <span className="text-gray-300">{spoolLabel ?? 'the original spool'}</span> go?
+            </p>
+            <select
+              value={destId}
+              onChange={(e) => setDestId(e.target.value)}
+              className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none"
+            >
+              <option value="">— Select destination —</option>
+              <option value="0">Unassign (no location)</option>
+              {moveTargets.map((loc) => (
+                <option key={loc.id} value={loc.id}>
+                  {loc.name}{loc.spool_count > 0 ? ` · ${loc.spool_count} spool${loc.spool_count !== 1 ? 's' : ''}` : ''}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-2 justify-end">
+              <Button type="button" variant="ghost" onClick={() => { setMoveMode(false); setDestId('') }}>
+                Back
+              </Button>
+              <Button
+                type="button"
+                disabled={!destId || movePending}
+                loading={movePending}
+                onClick={confirmMove}
+              >
+                Confirm move
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function EditSpoolPage() {
@@ -797,6 +911,11 @@ export default function EditSpoolPage() {
   const [selectedLocation, setSelectedLocation] = useState<LocationResponse | undefined>()
   const [filamentName, setFilamentName]     = useState('')
   const [selectedFilament, setSelectedFilament] = useState<FilamentProfileResponse | undefined>()
+  const [conflictSlot, setConflictSlot]     = useState<{
+    targetLocation: LocationResponse
+    occupyingSpool: SpoolResponse | null
+    loading: boolean
+  } | null>(null)
 
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: spool, isLoading: loadingSpool } = useQuery({
@@ -853,7 +972,8 @@ export default function EditSpoolPage() {
     if (spool.extra_color_hex_2) setColorHex2(spool.extra_color_hex_2)
     if (spool.extra_color_hex_3) setColorHex3(spool.extra_color_hex_3)
     if (spool.extra_color_hex_4) setColorHex4(spool.extra_color_hex_4)
-    if (spool.filament?.color_hex) setColorHex(spool.filament.color_hex)
+    if (spool.color_hex)            setColorHex(spool.color_hex)
+    else if (spool.filament?.color_hex) setColorHex(spool.filament.color_hex)
     if (spool.filament?.name)      setFilamentName(spool.filament.name)
     if (spool.brand)               setSelectedBrand(spool.brand)
     if (spool.location)            setSelectedLocation(spool.location)
@@ -908,6 +1028,65 @@ export default function EditSpoolPage() {
     onSuccess:  () => queryClient.invalidateQueries({ queryKey: ['locations'] }),
   })
 
+  const moveOccupierMutation = useMutation({
+    mutationFn: ({ spoolId, locationId }: { spoolId: number; locationId: number | undefined }) =>
+      spoolsApi.update(spoolId, { location_id: locationId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spools'] })
+      queryClient.invalidateQueries({ queryKey: ['locations'] })
+    },
+  })
+
+  function handleLocationChange(locId: number | undefined, item: LocationResponse | undefined) {
+    if (!item || !item.slot_type) {
+      setValue('location_id', locId)
+      setSelectedLocation(item)
+      return
+    }
+    if (spool && item.id === spool.location?.id) {
+      setValue('location_id', locId)
+      setSelectedLocation(item)
+      return
+    }
+    if (item.spool_count > 0) {
+      setConflictSlot({ targetLocation: item, occupyingSpool: null, loading: true })
+      spoolsApi.list({ location_id: item.id, page_size: 5 })
+        .then((result) => {
+          const occupier = result.items.find((s) => s.id !== Number(id))
+          setConflictSlot((prev) => prev ? { ...prev, occupyingSpool: occupier ?? null, loading: false } : null)
+        })
+        .catch(() => setConflictSlot((prev) => prev ? { ...prev, loading: false } : null))
+      return
+    }
+    setValue('location_id', locId)
+    setSelectedLocation(item)
+  }
+
+  function handleConflictKeep() {
+    setConflictSlot(null)
+  }
+
+  function handleConflictMove(destLocationId: number | undefined) {
+    const conflict = conflictSlot
+    if (!conflict) return
+    if (!conflict.occupyingSpool) {
+      setValue('location_id', conflict.targetLocation.id)
+      setSelectedLocation(conflict.targetLocation)
+      setConflictSlot(null)
+      return
+    }
+    moveOccupierMutation.mutate(
+      { spoolId: conflict.occupyingSpool.id, locationId: destLocationId },
+      {
+        onSuccess: () => {
+          setValue('location_id', conflict.targetLocation.id)
+          setSelectedLocation(conflict.targetLocation)
+          setConflictSlot(null)
+        },
+      },
+    )
+  }
+
   const submitMutation = useMutation({
     mutationFn: async (data: FormData) => {
       const weightG = weightUnit === 'kg'
@@ -928,6 +1107,7 @@ export default function EditSpoolPage() {
         purchase_price:     data.purchase_price || undefined,
         supplier:           data.supplier    || undefined,
         product_url:        data.product_url || undefined,
+        color_hex:          colorHex || undefined,
         extra_color_hex_2:  colorHex2 || undefined,
         extra_color_hex_3:  colorHex3 || undefined,
         extra_color_hex_4:  colorHex4 || undefined,
@@ -973,7 +1153,7 @@ export default function EditSpoolPage() {
 
       queryClient.invalidateQueries({ queryKey: ['spools'] })
       queryClient.invalidateQueries({ queryKey: ['printers'] })
-      navigate('/spools')
+      navigate(-1)
     },
     onError: (err) => setSubmitError(getErrorMessage(err)),
   })
@@ -1004,7 +1184,7 @@ export default function EditSpoolPage() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen gap-3">
         <p className="text-gray-400">Spool not found.</p>
-        <Button variant="secondary" onClick={() => navigate('/spools')}>Back to inventory</Button>
+        <Button variant="secondary" onClick={() => navigate(-1)}>Back to inventory</Button>
       </div>
     )
   }
@@ -1014,7 +1194,7 @@ export default function EditSpoolPage() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="sticky top-0 z-30 border-b border-surface-border bg-surface/80 backdrop-blur px-5 lg:px-7 py-4">
         <div className="flex items-center gap-3">
-          <button type="button" onClick={() => navigate('/spools')}
+          <button type="button" onClick={() => navigate(-1)}
             className="rounded-lg p-1.5 text-gray-400 hover:bg-surface-2 hover:text-white transition-colors">
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -1332,7 +1512,7 @@ export default function EditSpoolPage() {
               label="Storage location"
               items={locations}
               value={watch('location_id')}
-              onChange={(id, item) => { setValue('location_id', id); setSelectedLocation(item) }}
+              onChange={handleLocationChange}
               placeholder="Select or add a storage location…"
               onAddNew={(name) => addLocationMutation.mutateAsync(name)}
               addLabel="Add location"
@@ -1426,10 +1606,23 @@ export default function EditSpoolPage() {
         </div>
       </div>
 
+      {/* ── Slot conflict dialog ────────────────────────────────────────────── */}
+      {conflictSlot && (
+        <SlotConflictDialog
+          targetLocation={conflictSlot.targetLocation}
+          occupyingSpool={conflictSlot.occupyingSpool}
+          loadingOccupier={conflictSlot.loading}
+          locations={locations}
+          movePending={moveOccupierMutation.isPending}
+          onKeep={handleConflictKeep}
+          onMove={handleConflictMove}
+        />
+      )}
+
       {/* ── Sticky footer ───────────────────────────────────────────────────── */}
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-surface-border bg-surface/90 backdrop-blur px-5 lg:px-7 py-3">
         <div className="flex items-center justify-end gap-3 max-w-5xl mx-auto">
-          <Button type="button" variant="ghost" onClick={() => navigate('/spools')}>Cancel</Button>
+          <Button type="button" variant="ghost" onClick={() => navigate(-1)}>Cancel</Button>
           <Button
             type="button"
             loading={submitMutation.isPending}

@@ -46,7 +46,12 @@ async def create_printer(
     await db.flush()
 
     # Auto-create an "Ext 1" storage location for the external spool slot
-    db.add(StorageLocation(owner_id=current_user.id, name=f"{printer.name} Ext 1"))
+    db.add(StorageLocation(
+        owner_id=current_user.id,
+        name=f"{printer.name} Ext 1",
+        printer_id=printer.id,
+        slot_type="ext",
+    ))
     await db.flush()
 
     result = await db.execute(_printer_q(current_user.id).where(Printer.id == printer.id))
@@ -133,6 +138,10 @@ async def add_ams_unit(
         db.add(StorageLocation(
             owner_id=current_user.id,
             name=f"{printer.name} AMS {letter}{i + 1}",
+            printer_id=printer_id,
+            slot_type="ams",
+            ams_unit_index=unit_index,
+            ams_slot_index=i,
         ))
 
     await db.flush()

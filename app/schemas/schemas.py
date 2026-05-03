@@ -225,6 +225,10 @@ class LocationResponse(OrmBase):
     description: str | None
     is_dry_box: bool
     spool_count: int = 0
+    printer_id: int | None = None
+    slot_type: str | None = None
+    ams_unit_index: int | None = None
+    ams_slot_index: int | None = None
 
 
 # ── Spools ────────────────────────────────────────────────────────────────────

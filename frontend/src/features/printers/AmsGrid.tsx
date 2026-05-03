@@ -59,7 +59,10 @@ export function AmsGrid({ printer, canEdit }: AmsGridProps) {
 
   const addUnit = useMutation({
     mutationFn: () => printersApi.addAmsUnit(printer.id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['printers'] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['printers'] })
+      queryClient.invalidateQueries({ queryKey: ['locations'] })
+    },
   })
 
   const assignSlot = useMutation({

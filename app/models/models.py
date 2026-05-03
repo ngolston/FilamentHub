@@ -210,9 +210,15 @@ class StorageLocation(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     owner_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
-    name: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g. "Dry Box #1"
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(String(300))
     is_dry_box: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # Printer slot link — set when location was auto-created for a printer slot
+    printer_id: Mapped[int | None] = mapped_column(ForeignKey("printers.id", ondelete="CASCADE"), nullable=True)
+    slot_type: Mapped[str | None] = mapped_column(String(10), nullable=True)   # 'ext' | 'ams'
+    ams_unit_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ams_slot_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     spools: Mapped[list["Spool"]] = relationship(back_populates="location")
 

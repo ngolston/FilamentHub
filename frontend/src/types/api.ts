@@ -199,6 +199,10 @@ export interface LocationResponse {
   description: string | null
   is_dry_box: boolean
   spool_count: number
+  printer_id: number | null
+  slot_type: 'ext' | 'ams' | null
+  ams_unit_index: number | null
+  ams_slot_index: number | null
 }
 
 export interface LocationCreate {

@@ -34,6 +34,10 @@ async def list_locations(
             description=loc.description,
             is_dry_box=loc.is_dry_box,
             spool_count=counts.get(loc.id, 0),
+            printer_id=loc.printer_id,
+            slot_type=loc.slot_type,
+            ams_unit_index=loc.ams_unit_index,
+            ams_slot_index=loc.ams_slot_index,
         )
         for loc in locations
     ]

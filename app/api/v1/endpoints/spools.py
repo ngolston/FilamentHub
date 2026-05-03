@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.v1.deps import get_current_user, require_editor, require_operator
 from app.db.session import get_db
-from app.models.models import FilamentProfile, Spool, StorageLocation, User, WeightLog
+from app.models.models import AmsSlot, AmsUnit, FilamentProfile, Printer, Spool, StorageLocation, User, WeightLog
 from app.schemas.schemas import (
     BulkSpoolAction,
     PaginatedResponse,
@@ -121,10 +121,58 @@ async def update_spool(
     if not spool:
         raise HTTPException(status_code=404, detail="Spool not found")
 
-    for field, value in body.model_dump(exclude_unset=True).items():
+    update_data = body.model_dump(exclude_unset=True)
+    new_location_id = update_data.get("location_id")
+
+    # When location changes to a printer slot, sync the AMS/direct assignment
+    if new_location_id is not None and new_location_id != spool.location_id:
+        loc_result = await db.execute(
+            select(StorageLocation).where(StorageLocation.id == new_location_id)
+        )
+        loc = loc_result.scalar_one_or_none()
+        if loc and loc.printer_id and loc.slot_type:
+            # Clear any existing slot assignment for this spool
+            old_ams = await db.execute(
+                select(AmsSlot).where(AmsSlot.spool_id == spool_id)
+            )
+            for old_slot in old_ams.scalars().all():
+                old_slot.spool_id = None
+            old_printer = await db.execute(
+                select(Printer).where(Printer.direct_spool_id == spool_id)
+            )
+            for old_p in old_printer.scalars().all():
+                old_p.direct_spool_id = None
+
+            # Set the new slot assignment
+            if loc.slot_type == "ams" and loc.ams_unit_index is not None and loc.ams_slot_index is not None:
+                unit_result = await db.execute(
+                    select(AmsUnit).where(
+                        AmsUnit.printer_id == loc.printer_id,
+                        AmsUnit.unit_index == loc.ams_unit_index,
+                    )
+                )
+                unit = unit_result.scalar_one_or_none()
+                if unit:
+                    slot_result = await db.execute(
+                        select(AmsSlot).where(
+                            AmsSlot.ams_unit_id == unit.id,
+                            AmsSlot.slot_index == loc.ams_slot_index,
+                        )
+                    )
+                    slot = slot_result.scalar_one_or_none()
+                    if slot:
+                        slot.spool_id = spool_id
+            elif loc.slot_type == "ext":
+                printer = await db.get(Printer, loc.printer_id)
+                if printer:
+                    printer.direct_spool_id = spool_id
+
+    for field, value in update_data.items():
         setattr(spool, field, value)
 
-    return spool
+    await db.flush()
+    result = await db.execute(_spool_query(current_user.id).where(Spool.id == spool_id))
+    return result.scalar_one()
 
 
 @router.delete("/{spool_id}", status_code=status.HTTP_204_NO_CONTENT)
