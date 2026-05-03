@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.v1.deps import get_current_user, require_editor
 from app.db.session import get_db
-from app.models.models import AmsSlot, AmsUnit, Printer, Spool, User
+from app.models.models import AmsSlot, AmsUnit, Printer, Spool, StorageLocation, User
 from app.schemas.schemas import PrinterCreate, PrinterResponse, PrinterUpdate
 
 router = APIRouter(prefix="/printers", tags=["printers"])
@@ -44,6 +44,11 @@ async def create_printer(
     printer = Printer(owner_id=current_user.id, **body.model_dump())
     db.add(printer)
     await db.flush()
+
+    # Auto-create an "Ext 1" storage location for the external spool slot
+    db.add(StorageLocation(owner_id=current_user.id, name=f"{printer.name} Ext 1"))
+    await db.flush()
+
     result = await db.execute(_printer_q(current_user.id).where(Printer.id == printer.id))
     return result.scalar_one()
 
@@ -115,12 +120,20 @@ async def add_ams_unit(
         raise HTTPException(status_code=404, detail="Printer not found")
 
     unit_index = len(printer.ams_units)
+    letter = chr(65 + unit_index)  # A, B, C, …
     unit = AmsUnit(printer_id=printer_id, unit_index=unit_index, name=f"AMS {unit_index + 1}")
     db.add(unit)
     await db.flush()
 
     for i in range(4):
         db.add(AmsSlot(ams_unit_id=unit.id, slot_index=i))
+
+    # Auto-create one storage location per AMS slot
+    for i in range(4):
+        db.add(StorageLocation(
+            owner_id=current_user.id,
+            name=f"{printer.name} AMS {letter}{i + 1}",
+        ))
 
     await db.flush()
     return {"id": unit.id, "unit_index": unit_index, "name": unit.name, "slots": 4}

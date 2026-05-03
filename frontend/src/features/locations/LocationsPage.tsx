@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MapPin, Pencil, Plus, Trash2, Wind, X, Package } from 'lucide-react'
 import { locationsApi } from '@/api/locations'
@@ -75,6 +76,7 @@ function LocationModal({ location, onClose }: { location?: LocationResponse; onC
 // ── Spool row ─────────────────────────────────────────────────────────────────
 
 function SpoolRow({ spool }: { spool: SpoolResponse }) {
+  const navigate = useNavigate()
   const colors = [spool.color_hex, spool.extra_color_hex_2, spool.extra_color_hex_3, spool.extra_color_hex_4].filter(Boolean) as string[]
   const label  = [spool.filament?.material, spool.brand?.name ?? spool.filament?.brand].filter(Boolean).join(' · ') || spool.name || 'Unlabeled'
   const fill   = Math.round(spool.fill_percentage)
@@ -83,18 +85,21 @@ function SpoolRow({ spool }: { spool: SpoolResponse }) {
     : `${Math.round(spool.remaining_weight)} g`
 
   return (
-    <div className="flex items-center gap-3 py-2.5">
-      {/* Color swatch */}
-      <div className="shrink-0 flex gap-0.5">
+    <button
+      onClick={() => navigate(`/spools/${spool.id}/edit`)}
+      className="flex w-full items-center gap-3 py-2.5 rounded-lg px-2 -mx-2 hover:bg-surface-2/60 transition-colors group"
+    >
+      {/* Color swatches */}
+      <div className="shrink-0 flex gap-1">
         {colors.length > 0 ? colors.map((c, i) => (
-          <div key={i} className="h-5 w-5 rounded-full border border-white/10 shadow-sm" style={{ backgroundColor: c }} />
+          <div key={i} className="h-6 w-6 rounded-full border border-white/15 shadow-sm" style={{ backgroundColor: c }} />
         )) : (
-          <div className="h-5 w-5 rounded-full border border-surface-border bg-surface-3" />
+          <div className="h-6 w-6 rounded-full border border-surface-border bg-surface-3" />
         )}
       </div>
 
-      {/* Label + bar */}
-      <div className="min-w-0 flex-1">
+      {/* Label + fill bar */}
+      <div className="min-w-0 flex-1 text-left">
         <p className="text-xs font-medium text-gray-200 truncate">{label}</p>
         <div className="mt-1 h-1.5 w-full rounded-full bg-surface-3 overflow-hidden">
           <div
@@ -109,7 +114,10 @@ function SpoolRow({ spool }: { spool: SpoolResponse }) {
         <p className="text-xs text-gray-400">{weight}</p>
         <p className="text-[10px] text-gray-600">{fill}%</p>
       </div>
-    </div>
+
+      {/* Edit hint on hover */}
+      <Pencil className="h-3 w-3 shrink-0 text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+    </button>
   )
 }
 

@@ -31,7 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/',             label: 'Dashboard',  icon: LayoutDashboard },
   { to: '/spools',       label: 'Spools',      icon: Package },
   { to: '/locations',    label: 'Locations',   icon: MapPin },
-  { to: '/printers',     label: 'Devices',     icon: Printer },
+  { to: '/printers',     label: 'Printers',    icon: Printer },
   { to: '/print-jobs',   label: 'Print Jobs',        icon: ClipboardList },
   { to: '/filaments',    label: 'Filament Profiles', icon: Database },
   { to: '/community',    label: 'Community Filament Database', icon: Globe },

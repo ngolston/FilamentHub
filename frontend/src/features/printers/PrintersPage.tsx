@@ -49,6 +49,7 @@ function AddAmsDialog({
     mutationFn: (printerId: number) => printersApi.addAmsUnit(printerId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['printers'] })
+      queryClient.invalidateQueries({ queryKey: ['locations'] })
       onClose()
     },
   })
@@ -148,7 +149,7 @@ function AddDeviceButton({
         className="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-2 text-sm font-medium text-white hover:bg-primary-500 transition-colors"
       >
         <Plus className="h-4 w-4" />
-        Add device
+        Add printer
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
@@ -204,7 +205,7 @@ export default function PrintersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-white">Devices</h2>
+          <h2 className="text-xl font-semibold text-white">Printers</h2>
           <p className="mt-0.5 text-sm text-gray-400">
             {printers.length} printer{printers.length !== 1 ? 's' : ''}
             {totalAms > 0 && ` · ${totalAms} AMS unit${totalAms !== 1 ? 's' : ''}`}
