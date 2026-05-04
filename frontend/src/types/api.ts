@@ -361,31 +361,71 @@ export interface AmsUnit {
   slots: AmsSlot[]
 }
 
+// ─── Projects ─────────────────────────────────────────────────────────────────
+
+export interface ProjectResponse {
+  id: number
+  name: string
+  created_at: string
+}
+
+export interface ProjectCreate {
+  name: string
+}
+
 // ─── Print Jobs ───────────────────────────────────────────────────────────────
+
+export interface SpoolUsageCreate {
+  spool_id: number
+  filament_used_g: number
+}
+
+export interface SpoolUsageResponse {
+  spool_id: number | null
+  spool: AmsSpoolSummary | null
+  filament_used_g: number
+}
 
 export interface PrintJobResponse {
   id: number
   printer: PrinterResponse | null
+  project_id: number | null
+  project: ProjectResponse | null
   spool_id: number | null
   spool: AmsSpoolSummary | null
-  file_name: string
-  filament_used_g: number
+  spools: SpoolUsageResponse[]
+  plate_number: number | null
+  file_name: string | null
+  filament_used_g: number | null
   duration_seconds: number | null
   outcome: PrintJobOutcome
   notes: string | null
   started_at: string | null
-  finished_at: string | null
+  finished_at: string
+  photos: string[]
 }
 
 export interface PrintJobCreate {
   printer_id?: number
-  spool_id?: number
+  project_id?: number
+  spools?: SpoolUsageCreate[]
+  plate_number?: number
   file_name?: string
-  filament_used_g: number
   duration_seconds?: number
   outcome?: PrintJobOutcome
   notes?: string
-  started_at?: string
+  finished_at?: string
+}
+
+export interface PrintJobUpdate {
+  printer_id?: number
+  project_id?: number | null
+  spools?: SpoolUsageCreate[]
+  plate_number?: number | null
+  file_name?: string | null
+  duration_seconds?: number | null
+  outcome?: PrintJobOutcome
+  notes?: string | null
   finished_at?: string
 }
 
@@ -393,6 +433,7 @@ export interface PrintJobFilters extends PaginationParams {
   spool_id?: number
   printer_id?: number
   outcome?: PrintJobOutcome
+  project_id?: number
 }
 
 // ─── Drying Sessions ──────────────────────────────────────────────────────────

@@ -405,15 +405,52 @@ class PrinterResponse(OrmBase):
 
 # ── Print jobs ────────────────────────────────────────────────────────────────
 
+class SpoolUsageCreate(BaseModel):
+    spool_id: int
+    filament_used_g: Annotated[float, Field(gt=0)]
+
+
+class SpoolUsageResponse(OrmBase):
+    spool_id: int | None
+    spool: AmsSpoolSummary | None = None
+    filament_used_g: float
+
+
+# ── Projects ──────────────────────────────────────────────────────────────────
+
+class ProjectCreate(BaseModel):
+    name: str
+
+
+class ProjectResponse(OrmBase):
+    id: int
+    name: str
+    created_at: datetime
+
+
+# ── Print jobs ────────────────────────────────────────────────────────────────
+
 class PrintJobCreate(BaseModel):
     printer_id: int | None = None
-    spool_id: int | None = None
+    project_id: int | None = None
+    spools: list[SpoolUsageCreate] = []
+    plate_number: int | None = None
     file_name: str | None = None
-    filament_used_g: Annotated[float, Field(gt=0)]
     duration_seconds: int | None = None
     outcome: str = "success"
     notes: str | None = None
-    started_at: datetime | None = None
+    finished_at: datetime | None = None
+
+
+class PrintJobUpdate(BaseModel):
+    printer_id: int | None = None
+    project_id: int | None = None
+    spools: list[SpoolUsageCreate] | None = None
+    plate_number: int | None = None
+    file_name: str | None = None
+    duration_seconds: int | None = None
+    outcome: str | None = None
+    notes: str | None = None
     finished_at: datetime | None = None
 
 
@@ -421,15 +458,27 @@ class PrintJobResponse(OrmBase):
     id: int
     printer_id: int | None
     printer: PrinterResponse | None
+    project_id: int | None = None
+    project: ProjectResponse | None = None
     spool_id: int | None
     spool: AmsSpoolSummary | None = None
+    spools: list[SpoolUsageResponse] = []
+    plate_number: int | None
     file_name: str | None
-    filament_used_g: float
+    filament_used_g: float | None
     duration_seconds: int | None
     outcome: str
     notes: str | None
     started_at: datetime | None
     finished_at: datetime
+    photos: list[str] = []
+
+    @field_validator('photos', mode='before')
+    @classmethod
+    def extract_photo_urls(cls, v: object) -> list[str]:
+        if isinstance(v, list) and v and hasattr(v[0], 'url'):
+            return [p.url for p in v]
+        return v or []
 
 
 # ── Drying sessions ───────────────────────────────────────────────────────────

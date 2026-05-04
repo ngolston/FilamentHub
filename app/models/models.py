@@ -370,6 +370,20 @@ class AmsSlot(Base):
 
 # ── Print Jobs ────────────────────────────────────────────────────────────────
 
+class Project(Base):
+    """A named project that groups related print jobs (e.g. multi-plate prints)."""
+    __tablename__ = "projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
+
+    print_jobs: Mapped[list["PrintJob"]] = relationship(back_populates="project")
+
+    __table_args__ = (Index("ix_projects_user_id", "user_id"),)
+
+
 class PrintJob(Base):
     """
     A single print job — records which spool was consumed, how much,
@@ -381,9 +395,11 @@ class PrintJob(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     printer_id: Mapped[int | None] = mapped_column(ForeignKey("printers.id", ondelete="SET NULL"))
     spool_id: Mapped[int | None] = mapped_column(ForeignKey("spools.id", ondelete="SET NULL"))
+    project_id: Mapped[int | None] = mapped_column(ForeignKey("projects.id", ondelete="SET NULL"))
 
+    plate_number: Mapped[int | None] = mapped_column(Integer)
     file_name: Mapped[str | None] = mapped_column(String(300))
-    filament_used_g: Mapped[float] = mapped_column(Float, nullable=False)   # grams consumed
+    filament_used_g: Mapped[float | None] = mapped_column(Float)            # sum of all spool usages
     duration_seconds: Mapped[int | None] = mapped_column(Integer)           # print time
     outcome: Mapped[PrintJobOutcome] = mapped_column(Enum(PrintJobOutcome), default=PrintJobOutcome.success)
     notes: Mapped[str | None] = mapped_column(Text)
@@ -394,12 +410,43 @@ class PrintJob(Base):
     user: Mapped["User"] = relationship(back_populates="print_jobs")
     printer: Mapped["Printer | None"] = relationship(back_populates="print_jobs")
     spool: Mapped["Spool | None"] = relationship(back_populates="print_jobs")
+    project: Mapped["Project | None"] = relationship(back_populates="print_jobs")
+    spools: Mapped[list["PrintJobSpool"]] = relationship(back_populates="print_job", cascade="all, delete-orphan")
+    photos: Mapped[list["PrintJobPhoto"]] = relationship(back_populates="print_job", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_print_jobs_user_id", "user_id"),
         Index("ix_print_jobs_spool_id", "spool_id"),
         Index("ix_print_jobs_finished_at", "finished_at"),
     )
+
+
+class PrintJobSpool(Base):
+    """Per-spool filament usage for a single print job (supports multi-material)."""
+    __tablename__ = "print_job_spools"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    print_job_id: Mapped[int] = mapped_column(ForeignKey("print_jobs.id", ondelete="CASCADE"), nullable=False)
+    spool_id: Mapped[int | None] = mapped_column(ForeignKey("spools.id", ondelete="SET NULL"))
+    filament_used_g: Mapped[float] = mapped_column(Float, nullable=False)
+
+    print_job: Mapped["PrintJob"] = relationship(back_populates="spools")
+    spool: Mapped["Spool | None"] = relationship()
+
+    __table_args__ = (Index("ix_print_job_spools_print_job_id", "print_job_id"),)
+
+
+class PrintJobPhoto(Base):
+    """A photo attached to a print job."""
+    __tablename__ = "print_job_photos"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    print_job_id: Mapped[int] = mapped_column(ForeignKey("print_jobs.id", ondelete="CASCADE"), nullable=False)
+    url: Mapped[str] = mapped_column(String(500), nullable=False)
+
+    print_job: Mapped["PrintJob"] = relationship(back_populates="photos")
+
+    __table_args__ = (Index("ix_print_job_photos_print_job_id", "print_job_id"),)
 
 
 # ── Drying sessions ───────────────────────────────────────────────────────────

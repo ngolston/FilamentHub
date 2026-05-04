@@ -16,7 +16,8 @@ const SpoolsPage      = lazy(() => import('@/features/spools/SpoolsPage'))
 const AddSpoolPage    = lazy(() => import('@/features/spools/AddSpoolPage'))
 const EditSpoolPage   = lazy(() => import('@/features/spools/EditSpoolPage'))
 const PrintersPage    = lazy(() => import('@/features/printers/PrintersPage'))
-const PrintJobsPage   = lazy(() => import('@/features/print-jobs/PrintJobsPage'))
+const PrintJobsPage        = lazy(() => import('@/features/print-jobs/PrintJobsPage'))
+const ProjectDetailPage    = lazy(() => import('@/features/print-jobs/ProjectDetailPage'))
 const FilamentsPage   = lazy(() => import('@/features/filaments/FilamentsPage'))
 const CommunityPage   = lazy(() => import('@/features/community/CommunityPage'))
 const AlertsPage      = lazy(() => import('@/features/alerts/AlertsPage'))
@@ -71,7 +72,8 @@ export const router = createBrowserRouter([
           { path: '/spools/:id/edit', element: <EditSpoolPage /> },
           { path: '/locations',   element: <LocationsPage /> },
           { path: '/printers',    element: <PrintersPage /> },
-          { path: '/print-jobs',  element: <PrintJobsPage /> },
+          { path: '/print-jobs',                    element: <PrintJobsPage /> },
+          { path: '/print-jobs/projects/:id',       element: <ProjectDetailPage /> },
           { path: '/filaments',   element: <FilamentsPage /> },
           { path: '/community',   element: <CommunityPage /> },
           { path: '/alerts',      element: <AlertsPage /> },

@@ -2,14 +2,17 @@
 
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.v1.deps import get_current_user, require_operator
 from app.db.session import get_db
-from app.models.models import FilamentProfile, PrintJob, Printer, Spool, User
+from app.models.models import (
+    AmsSlot, AmsUnit, FilamentProfile, PrintJob, PrintJobPhoto, PrintJobSpool,
+    Printer, Spool, User,
+)
 from app.schemas.schemas import (
     CostAnalytics,
     DailyUsagePoint,
@@ -20,14 +23,37 @@ from app.schemas.schemas import (
     PaginatedResponse,
     PrintJobCreate,
     PrintJobResponse,
+    PrintJobUpdate,
     PrinterAnalytics,
     PrinterStat,
     SpoolForecast,
     UsageSummary,
 )
+from app.services.storage import upload_print_job_photo
 
 jobs_router = APIRouter(prefix="/print-jobs", tags=["print-jobs"])
 analytics_router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+_JOB_LOAD_OPTIONS = [
+    selectinload(PrintJob.printer).options(
+        selectinload(Printer.ams_units)
+            .selectinload(AmsUnit.slots)
+            .selectinload(AmsSlot.spool)
+            .selectinload(Spool.filament),
+        selectinload(Printer.ams_units)
+            .selectinload(AmsUnit.slots)
+            .selectinload(AmsSlot.spool)
+            .selectinload(Spool.brand),
+        selectinload(Printer.direct_spool).selectinload(Spool.filament),
+        selectinload(Printer.direct_spool).selectinload(Spool.brand),
+    ),
+    selectinload(PrintJob.spool).selectinload(Spool.filament),
+    selectinload(PrintJob.spool).selectinload(Spool.brand),
+    selectinload(PrintJob.spools).selectinload(PrintJobSpool.spool).selectinload(Spool.filament),
+    selectinload(PrintJob.spools).selectinload(PrintJobSpool.spool).selectinload(Spool.brand),
+    selectinload(PrintJob.photos),
+    selectinload(PrintJob.project),
+]
 
 
 # ── Print jobs ────────────────────────────────────────────────────────────────
@@ -38,33 +64,78 @@ async def log_print_job(
     current_user: User = Depends(require_operator),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Log a completed print job. Automatically deducts filament_used_g
-    from the linked spool's used_weight and sets first_used / last_used timestamps.
-    """
-    job = PrintJob(user_id=current_user.id, **body.model_dump())
+    """Log a completed print job and deduct filament from each linked spool."""
+    total_g = sum(s.filament_used_g for s in body.spools) or None
+    first_spool_id = body.spools[0].spool_id if body.spools else None
+
+    job = PrintJob(
+        user_id=current_user.id,
+        printer_id=body.printer_id,
+        project_id=body.project_id,
+        spool_id=first_spool_id,
+        plate_number=body.plate_number,
+        file_name=body.file_name,
+        filament_used_g=total_g,
+        duration_seconds=body.duration_seconds,
+        outcome=body.outcome,
+        notes=body.notes,
+        finished_at=body.finished_at or datetime.now(UTC),
+    )
     db.add(job)
     await db.flush()
 
-    # Update spool weight if a spool is linked
-    if body.spool_id:
+    now = datetime.now(UTC)
+    for entry in body.spools:
+        pjs = PrintJobSpool(
+            print_job_id=job.id,
+            spool_id=entry.spool_id,
+            filament_used_g=entry.filament_used_g,
+        )
+        db.add(pjs)
+
         result = await db.execute(
-            select(Spool).where(Spool.id == body.spool_id, Spool.owner_id == current_user.id)
+            select(Spool).where(Spool.id == entry.spool_id, Spool.owner_id == current_user.id)
         )
         spool = result.scalar_one_or_none()
         if spool:
-            spool.used_weight = min(spool.initial_weight, spool.used_weight + body.filament_used_g)
-            now = datetime.now(UTC)
+            spool.used_weight = min(spool.initial_weight, spool.used_weight + entry.filament_used_g)
             spool.last_used = now
             if not spool.first_used:
                 spool.first_used = now
-
-            # Auto-mark empty
             if spool.fill_percentage < 1.0:
                 spool.status = "empty"
 
-    await db.refresh(job, attribute_names=["printer", "spool"])
-    return job
+    await db.flush()
+    result = await db.execute(
+        select(PrintJob).where(PrintJob.id == job.id).options(*_JOB_LOAD_OPTIONS)
+    )
+    return result.scalar_one()
+
+
+@jobs_router.post("/{job_id}/photos", response_model=PrintJobResponse)
+async def upload_job_photos(
+    job_id: int,
+    files: list[UploadFile] = File(...),
+    current_user: User = Depends(require_operator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Attach one or more photos to an existing print job."""
+    result = await db.execute(
+        select(PrintJob).where(PrintJob.id == job_id, PrintJob.user_id == current_user.id)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Print job not found")
+
+    for file in files:
+        url = await upload_print_job_photo(job_id, file)
+        db.add(PrintJobPhoto(print_job_id=job_id, url=url))
+
+    await db.flush()
+    result = await db.execute(
+        select(PrintJob).where(PrintJob.id == job_id).options(*_JOB_LOAD_OPTIONS)
+    )
+    return result.scalar_one()
 
 
 @jobs_router.get("", response_model=PaginatedResponse[PrintJobResponse])
@@ -74,13 +145,14 @@ async def list_print_jobs(
     spool_id: int | None = None,
     printer_id: int | None = None,
     outcome: str | None = None,
+    project_id: int | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     q = (
         select(PrintJob)
         .where(PrintJob.user_id == current_user.id)
-        .options(selectinload(PrintJob.printer), selectinload(PrintJob.spool))
+        .options(*_JOB_LOAD_OPTIONS)
         .order_by(PrintJob.finished_at.desc())
     )
     if spool_id:
@@ -89,6 +161,8 @@ async def list_print_jobs(
         q = q.where(PrintJob.printer_id == printer_id)
     if outcome:
         q = q.where(PrintJob.outcome == outcome)
+    if project_id:
+        q = q.where(PrintJob.project_id == project_id)
 
     total = (await db.execute(select(func.count()).select_from(q.subquery()))).scalar_one()
     result = await db.execute(q.offset((page - 1) * page_size).limit(page_size))
@@ -100,6 +174,108 @@ async def list_print_jobs(
         page_size=page_size,
         pages=-(-total // page_size),
     )
+
+
+@jobs_router.put("/{job_id}", response_model=PrintJobResponse)
+async def update_print_job(
+    job_id: int,
+    body: PrintJobUpdate,
+    current_user: User = Depends(require_operator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update a print job's fields, re-adjusting spool weights when spools change."""
+    result = await db.execute(
+        select(PrintJob)
+        .where(PrintJob.id == job_id, PrintJob.user_id == current_user.id)
+        .options(selectinload(PrintJob.spools))
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Print job not found")
+
+    if body.printer_id is not None:
+        job.printer_id = body.printer_id
+    if body.project_id is not None:
+        job.project_id = body.project_id
+    if body.plate_number is not None:
+        job.plate_number = body.plate_number
+    if body.file_name is not None:
+        job.file_name = body.file_name
+    if body.duration_seconds is not None:
+        job.duration_seconds = body.duration_seconds
+    if body.outcome is not None:
+        job.outcome = body.outcome
+    if body.notes is not None:
+        job.notes = body.notes
+    if body.finished_at is not None:
+        job.finished_at = body.finished_at
+
+    if body.spools is not None:
+        # Undo old spool weight deductions
+        for old_pjs in job.spools:
+            sr = await db.execute(
+                select(Spool).where(Spool.id == old_pjs.spool_id, Spool.owner_id == current_user.id)
+            )
+            spool = sr.scalar_one_or_none()
+            if spool:
+                spool.used_weight = max(0.0, spool.used_weight - old_pjs.filament_used_g)
+            await db.delete(old_pjs)
+
+        await db.flush()
+
+        # Apply new spool deductions
+        now = datetime.now(UTC)
+        for entry in body.spools:
+            db.add(PrintJobSpool(
+                print_job_id=job.id,
+                spool_id=entry.spool_id,
+                filament_used_g=entry.filament_used_g,
+            ))
+            sr = await db.execute(
+                select(Spool).where(Spool.id == entry.spool_id, Spool.owner_id == current_user.id)
+            )
+            spool = sr.scalar_one_or_none()
+            if spool:
+                spool.used_weight = min(spool.initial_weight, spool.used_weight + entry.filament_used_g)
+                spool.last_used = now
+                if not spool.first_used:
+                    spool.first_used = now
+
+        job.filament_used_g = sum(s.filament_used_g for s in body.spools) or None
+        job.spool_id = body.spools[0].spool_id if body.spools else None
+
+    await db.flush()
+    result = await db.execute(
+        select(PrintJob).where(PrintJob.id == job.id).options(*_JOB_LOAD_OPTIONS)
+    )
+    return result.scalar_one()
+
+
+@jobs_router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_print_job(
+    job_id: int,
+    current_user: User = Depends(require_operator),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete a print job and restore spool weights."""
+    result = await db.execute(
+        select(PrintJob)
+        .where(PrintJob.id == job_id, PrintJob.user_id == current_user.id)
+        .options(selectinload(PrintJob.spools))
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Print job not found")
+
+    for pjs in job.spools:
+        sr = await db.execute(
+            select(Spool).where(Spool.id == pjs.spool_id, Spool.owner_id == current_user.id)
+        )
+        spool = sr.scalar_one_or_none()
+        if spool:
+            spool.used_weight = max(0.0, spool.used_weight - pjs.filament_used_g)
+
+    await db.delete(job)
 
 
 # ── Analytics ─────────────────────────────────────────────────────────────────
