@@ -595,15 +595,16 @@ export default function CommunityPage() {
   }
 
   // ── UI state ─────────────────────────────────────────────────────────────
-  const [tab,        setTab]        = useState<TabKey>('browse')
-  const [view,       setView]       = useState<'grid' | 'table'>('grid')
-  const [page,       setPage]       = useState(1)
-  const [search,     setSearch]     = useState('')
-  const [matFilter,  setMatFilter]  = useState('')
-  const [diaFilter,  setDiaFilter]  = useState('')
-  const [colorFam,   setColorFam]   = useState('')
-  const [tags,       setTags]       = useState<Set<string>>(new Set())
-  const [minRating,  setMinRating]  = useState(0)
+  const [tab,         setTab]         = useState<TabKey>('browse')
+  const [view,        setView]        = useState<'grid' | 'table'>('grid')
+  const [page,        setPage]        = useState(1)
+  const [search,      setSearch]      = useState('')
+  const [matFilter,   setMatFilter]   = useState('')
+  const [brandFilter, setBrandFilter] = useState('')
+  const [diaFilter,   setDiaFilter]   = useState('')
+  const [colorFam,    setColorFam]    = useState('')
+  const [tags,        setTags]        = useState<Set<string>>(new Set())
+  const [minRating,   setMinRating]   = useState(0)
   const [importTarget, setImportTarget] = useState<CommunityFilament | null>(null)
   const [detailTarget, setDetailTarget] = useState<CommunityFilament | null>(null)
 
@@ -689,6 +690,9 @@ export default function CommunityPage() {
     // Material filter
     if (matFilter) items = items.filter((f) => f.material === matFilter)
 
+    // Brand filter
+    if (brandFilter) items = items.filter((f) => f.manufacturer === brandFilter)
+
     // Diameter filter
     if (diaFilter) items = items.filter((f) => String(f.diameter) === diaFilter)
 
@@ -708,10 +712,10 @@ export default function CommunityPage() {
     if (minRating > 0) items = items.filter((f) => computeRating(f) >= minRating)
 
     return items
-  }, [allItems, tab, search, matFilter, diaFilter, colorFam, tags, minRating, importedIds])
+  }, [allItems, tab, search, matFilter, brandFilter, diaFilter, colorFam, tags, minRating, importedIds])
 
   // Reset page when filters change
-  useEffect(() => { setPage(1) }, [search, matFilter, diaFilter, colorFam, tags, minRating, tab])
+  useEffect(() => { setPage(1) }, [search, matFilter, brandFilter, diaFilter, colorFam, tags, minRating, tab])
 
   // ── Pagination ────────────────────────────────────────────────────────────
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -730,7 +734,19 @@ export default function CommunityPage() {
       .slice(0, 14),
     [matCounts])
 
-  const hasFilters = search || matFilter || diaFilter || colorFam || tags.size > 0 || minRating > 0
+  const brandCounts = useMemo(() => {
+    const counts: Record<string, number> = {}
+    allItems.forEach((f) => { counts[f.manufacturer] = (counts[f.manufacturer] ?? 0) + 1 })
+    return counts
+  }, [allItems])
+
+  const topBrands = useMemo(() =>
+    Object.entries(brandCounts)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 14),
+    [brandCounts])
+
+  const hasFilters = search || matFilter || brandFilter || diaFilter || colorFam || tags.size > 0 || minRating > 0
   const synced_at  = listData?.synced_at ?? statsData?.synced_at
 
   return (
@@ -824,6 +840,34 @@ export default function CommunityPage() {
                 >
                   <span>{mat}</span>
                   <span className="text-xs text-gray-600">{count.toLocaleString()}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Brands */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Brand</p>
+            <div className="flex flex-col gap-0.5">
+              <button
+                onClick={() => { setBrandFilter(''); setPage(1) }}
+                className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                  !brandFilter ? 'bg-primary-600/20 text-primary-300' : 'text-gray-400 hover:bg-surface-2 hover:text-white'
+                }`}
+              >
+                <span>All</span>
+                <span className="text-xs text-gray-600">{allItems.length.toLocaleString()}</span>
+              </button>
+              {topBrands.map(([brand, count]) => (
+                <button
+                  key={brand}
+                  onClick={() => { setBrandFilter(brandFilter === brand ? '' : brand); setPage(1) }}
+                  className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                    brandFilter === brand ? 'bg-primary-600/20 text-primary-300' : 'text-gray-400 hover:bg-surface-2 hover:text-white'
+                  }`}
+                >
+                  <span className="truncate">{brand}</span>
+                  <span className="text-xs text-gray-600 shrink-0 ml-1">{count.toLocaleString()}</span>
                 </button>
               ))}
             </div>
@@ -944,7 +988,7 @@ export default function CommunityPage() {
 
             {hasFilters && (
               <button
-                onClick={() => { setSearch(''); setMatFilter(''); setDiaFilter(''); setColorFam(''); setTags(new Set()); setMinRating(0) }}
+                onClick={() => { setSearch(''); setMatFilter(''); setBrandFilter(''); setDiaFilter(''); setColorFam(''); setTags(new Set()); setMinRating(0) }}
                 className="flex items-center gap-1.5 text-sm text-primary-400 hover:text-primary-300"
               >
                 <X className="h-3.5 w-3.5" /> Clear

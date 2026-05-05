@@ -519,7 +519,7 @@ export default function DashboardPage() {
       if (!job.finished_at) continue
       const jobDay = startOfDay(parseISO(job.finished_at))
       const slot = days.find((d) => isSameDay(d.date, jobDay))
-      if (slot) slot.grams += job.filament_used_g
+      if (slot) slot.grams += job.filament_used_g ?? 0
     }
     return days.map((d) => ({ label: d.label, grams: Math.round(d.grams) }))
   }, [jobsPage, today])

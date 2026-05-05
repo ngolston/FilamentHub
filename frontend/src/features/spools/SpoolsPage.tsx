@@ -755,8 +755,7 @@ export default function SpoolsPage() {
     mutationFn: async ({ spool, grams, note }: { spool: SpoolResponse; grams: number; note: string }) => {
       // Create a print job — the backend handles deducting from used_weight
       await printJobsApi.create({
-        spool_id: spool.id,
-        filament_used_g: grams,
+        spools: [{ spool_id: spool.id, filament_used_g: grams }],
         notes: note || undefined,
         finished_at: new Date().toISOString(),
       })
