@@ -730,8 +730,7 @@ export default function CommunityPage() {
 
   const topMats = useMemo(() =>
     Object.entries(matCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 14),
+      .sort(([a], [b]) => a.localeCompare(b)),
     [matCounts])
 
   const brandCounts = useMemo(() => {
@@ -742,8 +741,7 @@ export default function CommunityPage() {
 
   const topBrands = useMemo(() =>
     Object.entries(brandCounts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 14),
+      .sort(([a], [b]) => a.localeCompare(b)),
     [brandCounts])
 
   const hasFilters = search || matFilter || brandFilter || diaFilter || colorFam || tags.size > 0 || minRating > 0
@@ -753,7 +751,7 @@ export default function CommunityPage() {
     <div className="flex flex-col min-h-full">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <div className="bg-gradient-to-br from-surface-1 via-primary-900/10 to-surface-1 border-b border-surface-border px-5 lg:px-7 py-7">
-        <div className="max-w-5xl mx-auto">
+        <div className="max-w-7xl mx-auto">
           <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
               <h1 className="text-2xl font-bold text-white">Community Filament Database</h1>
@@ -812,66 +810,10 @@ export default function CommunityPage() {
       </div>
 
       {/* ── Body ─────────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 max-w-5xl mx-auto w-full gap-6 px-5 lg:px-7 py-5">
+      <div className="flex flex-1 max-w-7xl mx-auto w-full gap-6 px-5 lg:px-7 py-5">
 
         {/* ── Left sidebar ──────────────────────────────────────────────── */}
         <aside className="hidden lg:flex flex-col gap-5 w-52 shrink-0">
-
-          {/* Materials */}
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Material</p>
-            <div className="flex flex-col gap-0.5">
-              <button
-                onClick={() => { setMatFilter(''); setPage(1) }}
-                className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
-                  !matFilter ? 'bg-primary-600/20 text-primary-300' : 'text-gray-400 hover:bg-surface-2 hover:text-white'
-                }`}
-              >
-                <span>All</span>
-                <span className="text-xs text-gray-600">{allItems.length.toLocaleString()}</span>
-              </button>
-              {topMats.map(([mat, count]) => (
-                <button
-                  key={mat}
-                  onClick={() => { setMatFilter(matFilter === mat ? '' : mat); setPage(1) }}
-                  className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
-                    matFilter === mat ? 'bg-primary-600/20 text-primary-300' : 'text-gray-400 hover:bg-surface-2 hover:text-white'
-                  }`}
-                >
-                  <span>{mat}</span>
-                  <span className="text-xs text-gray-600">{count.toLocaleString()}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Brands */}
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">Brand</p>
-            <div className="flex flex-col gap-0.5">
-              <button
-                onClick={() => { setBrandFilter(''); setPage(1) }}
-                className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
-                  !brandFilter ? 'bg-primary-600/20 text-primary-300' : 'text-gray-400 hover:bg-surface-2 hover:text-white'
-                }`}
-              >
-                <span>All</span>
-                <span className="text-xs text-gray-600">{allItems.length.toLocaleString()}</span>
-              </button>
-              {topBrands.map(([brand, count]) => (
-                <button
-                  key={brand}
-                  onClick={() => { setBrandFilter(brandFilter === brand ? '' : brand); setPage(1) }}
-                  className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
-                    brandFilter === brand ? 'bg-primary-600/20 text-primary-300' : 'text-gray-400 hover:bg-surface-2 hover:text-white'
-                  }`}
-                >
-                  <span className="truncate">{brand}</span>
-                  <span className="text-xs text-gray-600 shrink-0 ml-1">{count.toLocaleString()}</span>
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* Color palette */}
           <div>
@@ -975,6 +917,30 @@ export default function CommunityPage() {
               />
             </div>
 
+            {/* Material */}
+            <select
+              value={matFilter}
+              onChange={(e) => { setMatFilter(e.target.value); setPage(1) }}
+              className="rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-gray-300 focus:border-primary-500 focus:outline-none"
+            >
+              <option value="">All materials</option>
+              {topMats.map(([mat]) => (
+                <option key={mat} value={mat}>{mat}</option>
+              ))}
+            </select>
+
+            {/* Brand */}
+            <select
+              value={brandFilter}
+              onChange={(e) => { setBrandFilter(e.target.value); setPage(1) }}
+              className="rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-gray-300 focus:border-primary-500 focus:outline-none"
+            >
+              <option value="">All brands</option>
+              {topBrands.map(([brand]) => (
+                <option key={brand} value={brand}>{brand}</option>
+              ))}
+            </select>
+
             {/* Diameter */}
             <select
               value={diaFilter}
@@ -1065,7 +1031,7 @@ export default function CommunityPage() {
 
           {/* Grid view */}
           {!isLoading && !isError && paged.length > 0 && view === 'grid' && (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {paged.map((f) => (
                 <FilamentCard
                   key={f.id}
