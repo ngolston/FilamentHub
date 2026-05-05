@@ -11,6 +11,9 @@ export const printJobsApi = {
   list: (params?: PrintJobFilters) =>
     api.get<PaginatedResponse<PrintJobResponse>>('/print-jobs', { params }).then((r) => r.data),
 
+  get: (id: number) =>
+    api.get<PrintJobResponse>(`/print-jobs/${id}`).then((r) => r.data),
+
   create: (data: PrintJobCreate) =>
     api.post<PrintJobResponse>('/print-jobs', data).then((r) => r.data),
 

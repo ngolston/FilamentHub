@@ -138,6 +138,23 @@ async def upload_job_photos(
     return result.scalar_one()
 
 
+@jobs_router.get("/{job_id}", response_model=PrintJobResponse)
+async def get_print_job(
+    job_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(PrintJob)
+        .where(PrintJob.id == job_id, PrintJob.user_id == current_user.id)
+        .options(*_JOB_LOAD_OPTIONS)
+    )
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Print job not found")
+    return job
+
+
 @jobs_router.get("", response_model=PaginatedResponse[PrintJobResponse])
 async def list_print_jobs(
     page: int = Query(1, ge=1),
