@@ -314,6 +314,14 @@ class SpoolResponse(OrmBase):
     last_used: datetime | None
 
 
+class PublicLocationResponse(OrmBase):
+    id: int
+    name: str
+    description: str | None
+    is_dry_box: bool
+    spools: list[SpoolResponse] = []
+
+
 class WeightLogCreate(BaseModel):
     measured_weight: Annotated[float, Field(gt=0)]
     spool_weight_tare: float = 0.0   # empty spool weight to subtract

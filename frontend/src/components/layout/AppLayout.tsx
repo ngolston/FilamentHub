@@ -18,7 +18,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/alerts':      'Alerts',
   '/settings':    'Settings',
   '/reorder':     'Reorder List',
-  '/analytics':   'Analytics',
+  '/analytics':       'Analytics',
+  '/cost-estimator':  'Print Cost Estimator',
 }
 
 export function AppLayout() {

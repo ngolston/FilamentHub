@@ -6,6 +6,9 @@ import { FullPageSpinner } from '@/components/ui/Spinner'
 // Lazy-loaded pages
 import { lazy, Suspense } from 'react'
 
+const PublicSpoolPage    = lazy(() => import('@/features/public/PublicSpoolPage'))
+const PublicLocationPage = lazy(() => import('@/features/public/PublicLocationPage'))
+
 const LoginPage            = lazy(() => import('@/features/auth/LoginPage'))
 const RegisterPage         = lazy(() => import('@/features/auth/RegisterPage'))
 const ForgotPasswordPage   = lazy(() => import('@/features/auth/ForgotPasswordPage'))
@@ -25,7 +28,8 @@ const AlertsPage      = lazy(() => import('@/features/alerts/AlertsPage'))
 const QrLabelsPage    = lazy(() => import('@/features/qr-labels/QrLabelsPage'))
 const SettingsPage    = lazy(() => import('@/features/settings/SettingsPage'))
 const ReorderPage     = lazy(() => import('@/features/reorder/ReorderPage'))
-const AnalyticsPage   = lazy(() => import('@/features/analytics/AnalyticsPage'))
+const AnalyticsPage      = lazy(() => import('@/features/analytics/AnalyticsPage'))
+const CostEstimatorPage  = lazy(() => import('@/features/cost-estimator/CostEstimatorPage'))
 const LocationsPage   = lazy(() => import('@/features/locations/LocationsPage'))
 
 function RequireAuth() {
@@ -82,10 +86,28 @@ export const router = createBrowserRouter([
           { path: '/qr-labels',   element: <QrLabelsPage /> },
           { path: '/settings',    element: <SettingsPage /> },
           { path: '/reorder',     element: <ReorderPage /> },
-          { path: '/analytics',   element: <AnalyticsPage /> },
+          { path: '/analytics',        element: <AnalyticsPage /> },
+          { path: '/cost-estimator',  element: <CostEstimatorPage /> },
         ],
       },
     ],
+  },
+  // Public routes — no auth required
+  {
+    path: '/s/:id',
+    element: (
+      <Suspense fallback={<FullPageSpinner />}>
+        <PublicSpoolPage />
+      </Suspense>
+    ),
+  },
+  {
+    path: '/l/:id',
+    element: (
+      <Suspense fallback={<FullPageSpinner />}>
+        <PublicLocationPage />
+      </Suspense>
+    ),
   },
   { path: '*', element: <Navigate to="/" replace /> },
 ])

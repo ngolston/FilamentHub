@@ -18,6 +18,7 @@ import {
   ShoppingCart,
   BarChart3,
   MapPin,
+  Calculator,
 } from 'lucide-react'
 
 interface NavItem {
@@ -35,8 +36,9 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/print-jobs',   label: 'Print Jobs',        icon: ClipboardList },
   { to: '/filaments',    label: 'Filament Profiles', icon: Database },
   { to: '/community',    label: 'Community Filament Database', icon: Globe },
-  { to: '/analytics',    label: 'Analytics',    icon: BarChart3 },
-  { to: '/reorder',      label: 'Reorder List', icon: ShoppingCart },
+  { to: '/analytics',       label: 'Analytics',            icon: BarChart3  },
+  { to: '/cost-estimator',  label: 'Print Cost Estimator', icon: Calculator },
+  { to: '/reorder',         label: 'Reorder List',         icon: ShoppingCart },
   { to: '/qr-labels',   label: 'QR Labels',  icon: QrCode },
   { to: '/alerts',       label: 'Alerts',     icon: Bell },
   { to: '/settings',     label: 'Settings',   icon: Settings },
