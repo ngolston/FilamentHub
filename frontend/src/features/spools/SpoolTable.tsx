@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { ChevronUp, ChevronDown, ChevronsUpDown, Pencil, Trash2, MoreHorizontal, Printer, Gauge, QrCode, Copy, Minus } from 'lucide-react'
 import type { SpoolResponse } from '@/types/api'
 
-export type SortKey = 'name' | 'material' | 'status' | 'fill_pct' | 'remaining' | 'last_used'
+export type SortKey = 'id' | 'name' | 'material' | 'status' | 'fill_pct' | 'remaining' | 'last_used'
 
 // ── Column definition ─────────────────────────────────────────────────────────
 

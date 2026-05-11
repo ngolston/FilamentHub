@@ -9,7 +9,7 @@ import { getStoredGeneralPrefs } from '@/hooks/useGeneralPrefs'
 
 const PAGE_TITLES: Record<string, string> = {
   '/':            'Dashboard',
-  '/spools':      'Spool Inventory',
+  '/spools':      'My Spools',
   '/printers':    'Devices',
   '/print-jobs':  'Print Jobs',
   '/filaments':   'Filament Profiles',

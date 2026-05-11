@@ -7,7 +7,7 @@ import {
   Printer, MapPin, Scale, Tag, Calendar, DollarSign,
   Thermometer, Droplets, Gauge, Hash, Link2, Pencil,
   Bookmark, BookmarkCheck, Columns3,
-  Archive, PackageOpen,
+  Archive, PackageOpen, Globe,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
 import { spoolsApi } from '@/api/spools'
@@ -22,7 +22,7 @@ import { cn } from '@/utils/cn'
 import { hexToColorName, hexToBasicColor, BASIC_COLORS, BASIC_COLOR_META } from '@/utils/colors'
 import { SpoolTable } from './SpoolTable'
 import { SpoolGrid } from './SpoolGrid'
-import { useSpoolViews, loadColumns, saveColumns, DEFAULT_COLUMNS } from './useSpoolViews'
+import { useSpoolViews, loadColumns, saveColumns, DEFAULT_COLUMNS, BUILT_IN_VIEWS, getInitialActiveView } from './useSpoolViews'
 import type { SpoolResponse, SpoolStatus } from '@/types/api'
 import type { SortKey, ColumnDef } from './SpoolTable'
 import { Badge } from '@/components/ui/Badge'
@@ -372,6 +372,168 @@ function SpoolDetailModal({ spool, onClose, onEdit }: {
   )
 }
 
+// ── Quick edit modal ──────────────────────────────────────────────────────────
+function QuickEditModal({ spool, locations, onClose, onSave }: {
+  spool: SpoolResponse
+  locations: { id: number; name: string }[]
+  onClose: () => void
+  onSave: (data: { name?: string; status: SpoolStatus; location_id?: number | null; used_weight: number; notes?: string }) => Promise<void>
+}) {
+  const [name,       setName]       = useState(spool.name ?? '')
+  const [status,     setStatus]     = useState<SpoolStatus>(spool.status)
+  const [locationId, setLocationId] = useState<string>(spool.location ? String(spool.location.id) : '')
+  const [remaining,  setRemaining]  = useState(String(Math.round(spool.remaining_weight)))
+  const [notes,      setNotes]      = useState(spool.notes ?? '')
+  const [saving,     setSaving]     = useState(false)
+  const [error,      setError]      = useState('')
+
+  const initial = spool.initial_weight
+  const remainNum = Math.max(0, Math.min(initial, Number(remaining) || 0))
+  const fillPct = initial > 0 ? (remainNum / initial) * 100 : 0
+  const hex = spool.filament?.color_hex ?? spool.color_hex ?? null
+
+  async function handleSave() {
+    setSaving(true)
+    setError('')
+    try {
+      await onSave({
+        name:        name.trim() || undefined,
+        status,
+        location_id: locationId ? Number(locationId) : null,
+        used_weight: Math.max(0, initial - remainNum),
+        notes:       notes.trim() || undefined,
+      })
+    } catch {
+      setError('Failed to save changes')
+      setSaving(false)
+    }
+  }
+
+  const STATUS_OPTS: { value: SpoolStatus; label: string; color: string }[] = [
+    { value: 'active',   label: 'Active',   color: 'bg-emerald-500' },
+    { value: 'storage',  label: 'Storage',  color: 'bg-cyan-500' },
+    { value: 'archived', label: 'Archived', color: 'bg-gray-500' },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-2xl border border-surface-border bg-surface-1 shadow-2xl overflow-hidden">
+        {/* Color stripe */}
+        <div className="h-1.5 w-full" style={{ backgroundColor: hex ?? '#6366f1' }} />
+
+        <div className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-semibold text-white">Edit spool</h2>
+            <button onClick={onClose} className="rounded-md p-1 text-gray-500 hover:text-gray-200 transition-colors">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Name */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">Name</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={spool.filament?.name ?? `Spool #${spool.id}`}
+              className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-primary-500 focus:outline-none"
+            />
+          </div>
+
+          {/* Status */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">Status</label>
+            <div className="flex gap-2">
+              {STATUS_OPTS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setStatus(opt.value)}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors',
+                    status === opt.value
+                      ? 'border-primary-500/60 bg-primary-600/20 text-white'
+                      : 'border-surface-border bg-surface-2 text-gray-400 hover:text-gray-200',
+                  )}
+                >
+                  <span className={`h-2 w-2 rounded-full ${opt.color}`} />
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Location */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">Location</label>
+            <select
+              value={locationId}
+              onChange={(e) => setLocationId(e.target.value)}
+              className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none"
+            >
+              <option value="">— No location —</option>
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Remaining weight */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">Remaining (g)</label>
+              <span className="text-xs text-gray-500 tabular-nums">of {initial.toFixed(0)}g initial</span>
+            </div>
+            <input
+              type="number"
+              min={0}
+              max={initial}
+              value={remaining}
+              onChange={(e) => setRemaining(e.target.value)}
+              className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none"
+            />
+            <div className="h-1.5 rounded-full bg-surface-3 overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all"
+                style={{ width: `${Math.min(100, fillPct)}%`, backgroundColor: hex ?? '#6366f1' }}
+              />
+            </div>
+            <p className="text-right text-[11px] text-gray-500 tabular-nums">{fillPct.toFixed(0)}% full</p>
+          </div>
+
+          {/* Notes */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">Notes</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Any notes about this spool…"
+              className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-primary-500 focus:outline-none resize-none"
+            />
+          </div>
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+
+          <div className="flex items-center justify-between pt-1">
+            <a
+              href={`/spools/${spool.id}/edit`}
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              onClick={(e) => { e.preventDefault(); onClose(); window.location.href = `/spools/${spool.id}/edit` }}
+            >
+              Full edit →
+            </a>
+            <div className="flex gap-2">
+              <Button variant="secondary" size="sm" onClick={onClose}>Cancel</Button>
+              <Button size="sm" loading={saving} onClick={handleSave}>Save changes</Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Confirm delete modal ──────────────────────────────────────────────────────
 function ConfirmDeleteModal({ count, name, loading, onClose, onConfirm }: {
   count: number; name?: string; loading: boolean; onClose: () => void; onConfirm: () => void
@@ -539,35 +701,40 @@ export default function SpoolsPage() {
   const pageSize = getStoredGeneralPrefs().page_size
 
   // ── Views (saved configurations) ───────────────────────────────────────────
-  const { allViews, activeView, activeId, activateView, saveView, deleteView } = useSpoolViews()
+  const { allViews, activeView, activeId, activateView, saveView, deleteView, resetView, isBuiltInCustomized } = useSpoolViews()
   const [saveViewOpen, setSaveViewOpen] = useState(false)
   const [saveViewName, setSaveViewName] = useState('')
 
   // ── Column visibility ───────────────────────────────────────────────────────
-  const [visibleCols,  setVisibleCols]  = useState<string[]>(() => loadColumns())
+  const [visibleCols,  setVisibleCols]  = useState<string[]>(() => {
+    const v = getInitialActiveView()
+    return v.columns.length > 0 ? v.columns : loadColumns()
+  })
   const [colPickerOpen, setColPickerOpen] = useState(false)
   const colPickerRef = useRef<HTMLDivElement>(null)
 
   // ── Filters ────────────────────────────────────────────────────────────────
-  const [search,        setSearch]        = useState('')
-  const [material,      setMaterial]      = useState('')
-  const [brandFilter,   setBrandFilter]   = useState('')
-  const [statusFlt,     setStatusFlt]     = useState('')
-  const [colorFlt,      setColorFlt]      = useState('')
-  const [basicColorFlt, setBasicColorFlt] = useState('')
-  const [locationFlt,   setLocationFlt]   = useState('')
-  const [printerFlt,    setPrinterFlt]    = useState('')
+  const [search,        setSearch]        = useState(() => getInitialActiveView().filters.search)
+  const [material,      setMaterial]      = useState(() => getInitialActiveView().filters.material)
+  const [brandFilter,   setBrandFilter]   = useState(() => getInitialActiveView().filters.brandFilter)
+  const [statusFlt,     setStatusFlt]     = useState(() => getInitialActiveView().filters.statusFlt)
+  const [colorFlt,      setColorFlt]      = useState(() => getInitialActiveView().filters.colorFlt)
+  const [basicColorFlt, setBasicColorFlt] = useState(() => getInitialActiveView().filters.basicColorFlt)
+  const [locationFlt,   setLocationFlt]   = useState(() => getInitialActiveView().filters.locationFlt)
+  const [printerFlt,    setPrinterFlt]    = useState(() => getInitialActiveView().filters.printerFlt)
 
   // ── View / sort ─────────────────────────────────────────────────────────────
-  const [view,    setView]    = useState<'table' | 'grid'>(() => getStoredGeneralPrefs().view_mode)
+  const [view,    setView]    = useState<'table' | 'grid'>(() => getInitialActiveView().viewMode)
   const [page,    setPage]    = useState(1)
-  const [sortBy,  setSortBy]  = useState<SortKey>(() => toSortKey(getStoredGeneralPrefs().sort_order))
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [sortBy,  setSortBy]  = useState<SortKey>(() => getInitialActiveView().sortBy)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => getInitialActiveView().sortDir)
 
   // ── Selection ──────────────────────────────────────────────────────────────
   const [selected, setSelected] = useState<Set<number>>(new Set())
 
   // ── Modals ─────────────────────────────────────────────────────────────────
+  const [addModal,     setAddModal]     = useState(false)
+  const [quickEdit,    setQuickEdit]    = useState<SpoolResponse | null>(null)
   const [viewSpool,    setViewSpool]    = useState<SpoolResponse | null>(null)
   const [loadModal,    setLoadModal]    = useState<SpoolResponse | null>(null)
   const [logModal,     setLogModal]     = useState<SpoolResponse | null>(null)
@@ -672,6 +839,7 @@ export default function SpoolsPage() {
     return [...filtered].sort((a, b) => {
       let av: string | number, bv: string | number
       switch (sortBy) {
+        case 'id':        av = a.id; bv = b.id; break
         case 'name':      av = a.name ?? a.filament?.name ?? ''; bv = b.name ?? b.filament?.name ?? ''; break
         case 'material':  av = a.filament?.material ?? ''; bv = b.filament?.material ?? ''; break
         case 'status':    av = a.status; bv = b.status; break
@@ -715,6 +883,16 @@ export default function SpoolsPage() {
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Parameters<typeof spoolsApi.update>[1] }) =>
+      spoolsApi.update(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spools'] })
+      setQuickEdit(null)
+      toast('Spool updated')
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: async (ids: number[]) => {
       for (const id of ids) await spoolsApi.delete(id)
@@ -807,7 +985,7 @@ export default function SpoolsPage() {
 
   const columnDefs = useMemo((): ColumnDef[] => [
     {
-      key: 'id', label: 'ID', thClassName: 'w-14',
+      key: 'id', label: 'ID', sortKey: 'id', thClassName: 'w-14',
       render: (s) => <span className="text-xs text-gray-500 tabular-nums">#{s.id}</span>,
     },
     {
@@ -918,7 +1096,10 @@ export default function SpoolsPage() {
     },
     {
       key: 'registered', label: 'Added', thClassName: 'w-32',
-      render: (s) => <span className="text-xs text-gray-500">{formatRelative(s.registered)}</span>,
+      render: (s) => {
+        const daysAgo = (Date.now() - new Date(s.registered).getTime()) / 86_400_000
+        return <span className="text-xs text-gray-500">{daysAgo <= 7 ? formatRelative(s.registered) : formatDate(s.registered)}</span>
+      },
     },
   ], [spoolPrinters])
 
@@ -926,6 +1107,17 @@ export default function SpoolsPage() {
     () => columnDefs.filter((c) => visibleCols.includes(c.key)),
     [columnDefs, visibleCols],
   )
+
+  const isDirty = useMemo(() => {
+    const curFilters  = { search, material, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt }
+    const savedCols   = activeView.columns.length > 0 ? activeView.columns : DEFAULT_COLUMNS
+    const filtersOk   = JSON.stringify(curFilters) === JSON.stringify(activeView.filters)
+    const colsOk      = [...visibleCols].sort().join(',') === [...savedCols].sort().join(',')
+    const sortOk      = sortBy === activeView.sortBy && sortDir === activeView.sortDir
+    const viewModeOk  = view === activeView.viewMode
+    return !(filtersOk && colsOk && sortOk && viewModeOk)
+  }, [search, material, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt,
+      sortBy, sortDir, view, visibleCols, activeView])
 
   // ── View helpers ───────────────────────────────────────────────────────────
   function applyView(v: typeof activeView) {
@@ -975,7 +1167,7 @@ export default function SpoolsPage() {
     spoolPrinters,
     isEditor,
     onView:        (s: SpoolResponse) => setViewSpool(s),
-    onEdit:        (s: SpoolResponse) => navigate(`/spools/${s.id}/edit`),
+    onEdit:        (s: SpoolResponse) => setQuickEdit(s),
     onDelete:      (s: SpoolResponse) => {
       if (getStoredGeneralPrefs().delete_confirm) {
         setDeleteModal({ ids: [s.id], name: s.name ?? s.filament?.name ?? `Spool #${s.id}` })
@@ -1033,39 +1225,35 @@ export default function SpoolsPage() {
               )}
             >
               {v.name}
+              {activeId === v.id && isDirty && (
+                <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-400 align-middle" />
+              )}
             </button>
-            {!v.builtIn && (
-              <button
-                onClick={() => deleteView(v.id)}
-                className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-surface-2 border border-surface-border text-gray-500 hover:text-red-400
-                  hidden group-hover/chip:flex items-center justify-center transition-colors"
-                title="Delete view"
-              >
-                <X className="h-2.5 w-2.5" />
-              </button>
-            )}
+            {v.builtIn
+              ? /* reset button only when built-in has been customised */
+                isBuiltInCustomized(v.id) && (
+                  <button
+                    onClick={() => { resetView(v.id); if (activeId === v.id) { const def = BUILT_IN_VIEWS.find((b) => b.id === v.id)!; applyView(def) } }}
+                    className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-surface-2 border border-surface-border text-gray-500 hover:text-amber-400
+                      hidden group-hover/chip:flex items-center justify-center transition-colors"
+                    title="Reset to default"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                )
+              : <button
+                  onClick={() => deleteView(v.id)}
+                  className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-surface-2 border border-surface-border text-gray-500 hover:text-red-400
+                    hidden group-hover/chip:flex items-center justify-center transition-colors"
+                  title="Delete view"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
+            }
           </div>
         ))}
 
-        {/* Update active custom view */}
-        {!activeView.builtIn && !saveViewOpen && (
-          <button
-            onClick={() => {
-              saveView({
-                ...activeView,
-                columns: visibleCols,
-                filters: { search, material, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt },
-                sortBy, sortDir, viewMode: view,
-              })
-              toast(`"${activeView.name}" updated`)
-            }}
-            className="flex items-center gap-1 rounded-full border border-surface-border px-3 py-1 text-xs text-gray-400 hover:border-primary-700/50 hover:text-gray-200 transition-colors"
-          >
-            <BookmarkCheck className="h-3 w-3" /> Update view
-          </button>
-        )}
-
-        {/* Save as new view */}
+        {/* Unsaved-changes prompt / save controls */}
         {saveViewOpen ? (
           <div className="flex items-center gap-1.5">
             <input
@@ -1083,6 +1271,31 @@ export default function SpoolsPage() {
             >Save</button>
             <button onClick={() => setSaveViewOpen(false)} className="text-gray-500 hover:text-gray-300">
               <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : isDirty ? (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-amber-400/80">Unsaved changes</span>
+            <span className="text-gray-700 select-none">·</span>
+            <button
+              onClick={() => {
+                saveView({
+                  ...activeView,
+                  columns: visibleCols,
+                  filters: { search, material, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt },
+                  sortBy, sortDir, viewMode: view,
+                })
+                toast(`"${activeView.name}" updated`)
+              }}
+              className="rounded-full border border-amber-600/40 bg-amber-900/20 px-2.5 py-1 text-[11px] text-amber-300 hover:bg-amber-900/40 transition-colors"
+            >
+              Replace "{activeView.name}"
+            </button>
+            <button
+              onClick={() => setSaveViewOpen(true)}
+              className="rounded-full border border-dashed border-surface-border px-2.5 py-1 text-[11px] text-gray-400 hover:border-primary-700/50 hover:text-gray-200 transition-colors"
+            >
+              Save as new
             </button>
           </div>
         ) : (
@@ -1189,22 +1402,22 @@ export default function SpoolsPage() {
           <div className="flex rounded-lg border border-surface-border bg-surface-2 p-0.5">
             <button
               onClick={() => setView('table')}
-              className={cn('rounded p-1.5 transition-colors', view === 'table' ? 'bg-surface-3 text-white' : 'text-gray-500 hover:text-gray-300')}
-              title="Table view"
+              className={cn('flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors', view === 'table' ? 'bg-surface-3 text-white' : 'text-gray-500 hover:text-gray-300')}
             >
-              <List className="h-4 w-4" />
+              <List className="h-3.5 w-3.5" />
+              Table
             </button>
             <button
               onClick={() => setView('grid')}
-              className={cn('rounded p-1.5 transition-colors', view === 'grid' ? 'bg-surface-3 text-white' : 'text-gray-500 hover:text-gray-300')}
-              title="Grid view"
+              className={cn('flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs font-medium transition-colors', view === 'grid' ? 'bg-surface-3 text-white' : 'text-gray-500 hover:text-gray-300')}
             >
-              <LayoutGrid className="h-4 w-4" />
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Grid
             </button>
           </div>
 
           {isEditor && (
-            <Button size="sm" onClick={() => navigate('/spools/new')}>
+            <Button size="sm" onClick={() => setAddModal(true)}>
               <Plus className="h-4 w-4" /> Add spool
             </Button>
           )}
@@ -1310,12 +1523,53 @@ export default function SpoolsPage() {
         </div>
       )}
 
+      {/* ── Add spool choice modal ─────────────────────────────────────────── */}
+      {addModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70" onClick={() => setAddModal(false)} />
+          <div className="relative w-full max-w-sm rounded-2xl border border-surface-border bg-surface-1 p-6 shadow-2xl space-y-4">
+            <h2 className="text-base font-semibold text-white">Add a spool</h2>
+            <p className="text-sm text-gray-400">Start fresh or pick a filament profile from the community database.</p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => { setAddModal(false); navigate('/spools/new') }}
+                className="flex flex-col items-start gap-1 rounded-xl border border-surface-border bg-surface-2 p-4 text-left hover:border-primary-500/60 hover:bg-surface-3 transition-colors"
+              >
+                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Package className="h-4 w-4 text-primary-400" /> Brand New Spool
+                </span>
+                <span className="text-xs text-gray-400">Manually enter all the details for a new spool.</span>
+              </button>
+              <button
+                onClick={() => { setAddModal(false); navigate('/community') }}
+                className="flex flex-col items-start gap-1 rounded-xl border border-surface-border bg-surface-2 p-4 text-left hover:border-primary-500/60 hover:bg-surface-3 transition-colors"
+              >
+                <span className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-accent-400" /> Community Filament Database
+                </span>
+                <span className="text-xs text-gray-400">Browse crowd-sourced filament profiles and add from there.</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Quick edit modal ───────────────────────────────────────────────── */}
+      {quickEdit && (
+        <QuickEditModal
+          spool={quickEdit}
+          locations={allLocations}
+          onClose={() => setQuickEdit(null)}
+          onSave={(data) => updateMutation.mutateAsync({ id: quickEdit.id, data })}
+        />
+      )}
+
       {/* ── Modals ─────────────────────────────────────────────────────────── */}
       {viewSpool && (
         <SpoolDetailModal
           spool={viewSpool}
           onClose={() => setViewSpool(null)}
-          onEdit={() => { setViewSpool(null); navigate(`/spools/${viewSpool.id}/edit`) }}
+          onEdit={() => { setViewSpool(null); setQuickEdit(viewSpool) }}
         />
       )}
 

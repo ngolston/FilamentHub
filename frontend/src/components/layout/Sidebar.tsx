@@ -30,12 +30,11 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/',             label: 'Dashboard',  icon: LayoutDashboard },
-  { to: '/spools',       label: 'Spools',      icon: Package },
+  { to: '/spools',       label: 'My Spools',   icon: Package },
   { to: '/locations',    label: 'Locations',   icon: MapPin },
   { to: '/printers',     label: 'Printers',    icon: Printer },
   { to: '/print-jobs',   label: 'Print Jobs',        icon: ClipboardList },
   { to: '/filaments',    label: 'Filament Profiles', icon: Database },
-  { to: '/community',    label: 'Community Filament Database', icon: Globe },
   { to: '/analytics',       label: 'Analytics',            icon: BarChart3  },
   { to: '/cost-estimator',  label: 'Print Cost Estimator', icon: Calculator },
   { to: '/reorder',         label: 'Reorder List',         icon: ShoppingCart },

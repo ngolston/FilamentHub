@@ -68,13 +68,27 @@ function load<T>(key: string, fallback: T): T {
   catch { return fallback }
 }
 
+// ── Initial active view (for useState initializers) ───────────────────────────
+
+export function getInitialActiveView(): SpoolView {
+  const activeId    = load<string>(LS_ACTIVE, 'all')
+  const customViews = load<SpoolView[]>(LS_VIEWS, [])
+  const builtIn     = BUILT_IN_VIEWS.find((v) => v.id === activeId)
+  if (builtIn) return customViews.find((cv) => cv.id === activeId) ?? builtIn
+  return customViews.find((v) => v.id === activeId) ?? BUILT_IN_VIEWS[0]
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useSpoolViews() {
   const [customViews, setCustomViews] = useState<SpoolView[]>(() => load(LS_VIEWS, []))
   const [activeId,    setActiveId]    = useState<string>(() => load(LS_ACTIVE, 'all'))
 
-  const allViews = [...BUILT_IN_VIEWS, ...customViews]
+  // Built-in views can be overridden by a custom view with the same ID
+  const allViews = [
+    ...BUILT_IN_VIEWS.map((bv) => customViews.find((cv) => cv.id === bv.id) ?? bv),
+    ...customViews.filter((cv) => !BUILT_IN_VIEWS.some((bv) => bv.id === cv.id)),
+  ]
   const activeView = allViews.find((v) => v.id === activeId) ?? BUILT_IN_VIEWS[0]
 
   const activateView = useCallback((id: string) => {
@@ -112,7 +126,18 @@ export function useSpoolViews() {
     })
   }, [])
 
-  return { allViews, activeView, activeId, activateView, saveView, deleteView, renameView }
+  const resetView = useCallback((id: string) => {
+    setCustomViews((prev) => {
+      const next = prev.filter((v) => v.id !== id)
+      localStorage.setItem(LS_VIEWS, JSON.stringify(next))
+      return next
+    })
+  }, [])
+
+  const isBuiltInCustomized = useCallback((id: string) =>
+    customViews.some((cv) => cv.id === id), [customViews])
+
+  return { allViews, activeView, activeId, activateView, saveView, deleteView, renameView, resetView, isBuiltInCustomized }
 }
 
 // ── Column visibility helper (separate from view, persisted independently) ───
