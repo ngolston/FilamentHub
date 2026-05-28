@@ -148,6 +148,7 @@ class FilamentProfileCreate(BaseModel):
     drying_temp: int | None = None
     drying_duration: int | None = None
     product_url: str | None = None
+    photo_url: str | None = None
     notes: str | None = None
 
     @field_validator("color_hex")
@@ -183,6 +184,7 @@ class FilamentProfileResponse(OrmBase):
     is_community: bool
     is_verified: bool
     product_url: str | None
+    photo_url: str | None
     notes: str | None
     created_at: datetime
     updated_at: datetime

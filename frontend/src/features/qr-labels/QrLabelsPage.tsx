@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
 import {
   Printer, CheckSquare, Square, QrCode,
   LayoutGrid, ChevronDown, Info, MapPin,
+  FileImage, FileDown, X,
 } from 'lucide-react'
 import { spoolsApi } from '@/api/spools'
 import { locationsApi } from '@/api/locations'
@@ -150,11 +151,10 @@ function TemplateThumbnail({ value, active }: { value: LabelTemplate; active: bo
   }
 }
 
-// ── Print helper ─────────────────────────────────────────────────────────────
+// ── PDF print helpers ─────────────────────────────────────────────────────────
 
 function printLabels(areaId: string, cols: number, mmW: number, mmH: number) {
   const gapMm = 3
-
   const style = document.createElement('style')
   style.id    = '__qr_print__'
   style.textContent = `
@@ -185,9 +185,7 @@ function printLabels(areaId: string, cols: number, mmW: number, mmH: number) {
 }
 
 function printLocationLabels(areaId: string) {
-  const mmW = 40
-  const mmH = 30
-
+  const mmW = 40, mmH = 30
   const style = document.createElement('style')
   style.id    = '__qr_print_loc__'
   style.textContent = `
@@ -215,6 +213,139 @@ function printLocationLabels(areaId: string) {
   }
   window.addEventListener('afterprint', afterPrint)
   window.print()
+}
+
+// ── PNG / ZIP export helpers ──────────────────────────────────────────────────
+
+function triggerDownload(href: string, filename: string) {
+  const a = document.createElement('a')
+  a.href     = href
+  a.download = filename
+  a.click()
+}
+
+async function captureElementPng(el: HTMLElement): Promise<string> {
+  const { toPng } = await import('html-to-image')
+  return toPng(el, { pixelRatio: 3 })
+}
+
+async function downloadSinglePng(el: HTMLElement, filename: string) {
+  const dataUrl = await captureElementPng(el)
+  triggerDownload(dataUrl, filename)
+}
+
+async function downloadZip(
+  elements: HTMLElement[],
+  filenames: string[],
+  zipName: string,
+) {
+  const JSZip  = (await import('jszip')).default
+  const zip    = new JSZip()
+  for (let i = 0; i < elements.length; i++) {
+    const dataUrl = await captureElementPng(elements[i])
+    zip.file(filenames[i], dataUrl.split(',')[1], { base64: true })
+  }
+  const blob = await zip.generateAsync({ type: 'blob' })
+  const url  = URL.createObjectURL(blob)
+  triggerDownload(url, zipName)
+  URL.revokeObjectURL(url)
+}
+
+// ── Export menu button ────────────────────────────────────────────────────────
+
+interface ExportMenuProps {
+  count: number
+  disabled: boolean
+  exporting: boolean
+  onPdf: () => void
+  onPng: () => void
+}
+
+function ExportMenuButton({ count, disabled, exporting, onPdf, onPng }: ExportMenuProps) {
+  const [open, setOpen] = useState(false)
+  const ref             = useRef<HTMLDivElement>(null)
+
+  // Close on outside click
+  useState(() => {
+    if (!open) return
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  })
+
+  const label = count > 0
+    ? `${count} label${count !== 1 ? 's' : ''}`
+    : 'labels'
+
+  return (
+    <div ref={ref} className="relative flex items-end">
+      {/* Main button — PDF */}
+      <button
+        onClick={() => { setOpen(false); onPdf() }}
+        disabled={disabled || exporting}
+        className="flex items-center gap-1.5 rounded-l-lg bg-primary-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        <Printer className="h-4 w-4" />
+        Print {label}
+      </button>
+
+      {/* Arrow to open dropdown */}
+      <button
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled || exporting}
+        className="flex items-center justify-center rounded-r-lg border-l border-primary-500 bg-primary-600 px-2 py-1.5 text-white hover:bg-primary-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        aria-label="More export options"
+      >
+        <ChevronDown className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl border border-surface-border bg-surface-1 shadow-2xl overflow-hidden">
+          <button
+            onClick={() => { setOpen(false); onPdf() }}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-2 hover:text-white transition-colors text-left"
+          >
+            <Printer className="h-4 w-4 shrink-0 text-gray-500" />
+            <span>
+              <span className="font-medium text-white block leading-tight">Print / PDF</span>
+              <span className="text-xs text-gray-500">Opens browser print dialog</span>
+            </span>
+          </button>
+
+          <div className="h-px bg-surface-border" />
+
+          <button
+            onClick={() => { setOpen(false); onPng() }}
+            disabled={exporting}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-2 hover:text-white transition-colors text-left disabled:opacity-50"
+          >
+            {count > 1
+              ? <FileDown className="h-4 w-4 shrink-0 text-gray-500" />
+              : <FileImage className="h-4 w-4 shrink-0 text-gray-500" />
+            }
+            <span>
+              <span className="font-medium text-white block leading-tight">
+                {count > 1 ? `Save as ZIP (${count} PNGs)` : 'Save as PNG'}
+              </span>
+              <span className="text-xs text-gray-500">
+                {count > 1 ? 'Each label saved as 1.png, 2.png, …' : 'High-resolution image file'}
+              </span>
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* Exporting overlay indicator */}
+      {exporting && (
+        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-primary-900/80 pointer-events-none">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── Spool picker row ──────────────────────────────────────────────────────────
@@ -252,8 +383,7 @@ function SpoolPickerRow({
   )
 }
 
-// ── Location badge label — 40 × 30 mm, black & white ─────────────────────────
-// W=151px H=113px at 96 dpi
+// ── Location badge label — 40 × 30 mm ────────────────────────────────────────
 
 const LOC_W = 151
 const LOC_H = 113
@@ -274,14 +404,11 @@ function LocationBadgeLabel({ location, forScreen = false }: { location: Locatio
       border: '1px solid #000',
       ...(forScreen ? { borderRadius: 6, boxShadow: '0 2px 10px rgba(0,0,0,0.20)' } : {}),
     }}>
-
-      {/* ── Header bar ── */}
       <div style={{
         height: 19, background: '#000', flexShrink: 0,
         display: 'flex', alignItems: 'center',
         padding: '0 7px', gap: 4, boxSizing: 'border-box',
       }}>
-        {/* Map-pin icon */}
         <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
           stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
@@ -298,16 +425,12 @@ function LocationBadgeLabel({ location, forScreen = false }: { location: Locatio
         </span>
       </div>
 
-      {/* ── Body ── */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-
-        {/* Info column */}
         <div style={{
           flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center',
           padding: '5px 6px 5px 7px', gap: 4,
           overflow: 'hidden', boxSizing: 'border-box',
         }}>
-          {/* Location name */}
           <div style={{
             fontSize: 13, fontWeight: 900, color: '#000',
             lineHeight: 1.1, letterSpacing: '-0.01em',
@@ -316,26 +439,18 @@ function LocationBadgeLabel({ location, forScreen = false }: { location: Locatio
           } as React.CSSProperties}>
             {location.name}
           </div>
-
-          {/* Divider */}
           <div style={{ height: 1, background: '#d1d5db' }} />
-
-          {/* Spool count */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
             <div style={{ width: 4, height: 4, borderRadius: 1, background: '#000', flexShrink: 0 }} />
             <span style={{ fontSize: 7.5, color: '#374151', fontWeight: 500 }}>
               {location.spool_count} spool{location.spool_count !== 1 ? 's' : ''}
             </span>
           </div>
-
-          {/* DRY BOX badge */}
           {location.is_dry_box && (
             <div style={{
               display: 'inline-flex', alignItems: 'center', gap: 2,
-              border: '1px solid #000', borderRadius: 2,
-              padding: '1.5px 3px',
-              fontSize: 6, fontWeight: 800,
-              letterSpacing: '0.1em', textTransform: 'uppercase',
+              border: '1px solid #000', borderRadius: 2, padding: '1.5px 3px',
+              fontSize: 6, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase',
               color: '#000', width: 'fit-content',
             }}>
               <svg width="6" height="6" viewBox="0 0 24 24" fill="none"
@@ -347,8 +462,6 @@ function LocationBadgeLabel({ location, forScreen = false }: { location: Locatio
               Dry Box
             </div>
           )}
-
-          {/* Description */}
           {location.description && (
             <div style={{
               fontSize: 6.5, color: '#6b7280',
@@ -359,11 +472,7 @@ function LocationBadgeLabel({ location, forScreen = false }: { location: Locatio
             </div>
           )}
         </div>
-
-        {/* Vertical divider */}
         <div style={{ width: 1, background: '#e5e7eb', flexShrink: 0 }} />
-
-        {/* QR column */}
         <div style={{
           width: 66, display: 'flex', alignItems: 'center', justifyContent: 'center',
           padding: 5, flexShrink: 0, boxSizing: 'border-box',
@@ -372,7 +481,6 @@ function LocationBadgeLabel({ location, forScreen = false }: { location: Locatio
         </div>
       </div>
 
-      {/* ── Footer bar ── */}
       <div style={{
         height: 13, background: '#111', flexShrink: 0,
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
@@ -380,8 +488,7 @@ function LocationBadgeLabel({ location, forScreen = false }: { location: Locatio
         <div style={{ height: 1, background: 'rgba(255,255,255,0.15)', flex: 1, marginLeft: 8 }} />
         <span style={{
           color: 'rgba(255,255,255,0.60)', fontSize: 6.5,
-          fontFamily: 'monospace', letterSpacing: '0.12em', fontWeight: 600,
-          whiteSpace: 'nowrap',
+          fontFamily: 'monospace', letterSpacing: '0.12em', fontWeight: 600, whiteSpace: 'nowrap',
         }}>
           LOC-{location.id}
         </span>
@@ -395,6 +502,7 @@ function LocationBadgeLabel({ location, forScreen = false }: { location: Locatio
 
 const PRINT_AREA_ID     = 'qr-label-print-area'
 const LOC_PRINT_AREA_ID = 'qr-label-loc-print-area'
+const EXPORT_AREA_ID    = 'qr-label-export-area'
 
 type Tab = 'spools' | 'locations'
 
@@ -405,10 +513,15 @@ export default function QrLabelsPage() {
   const [template,     setTemplate]     = useState<LabelTemplate>('classic-badge')
   const [columns,      setColumns]      = useState<2 | 3 | 4>(3)
   const [encoding,     setEncoding]     = useState<QrEncoding>('url')
-  const [showFieldCfg,   setShowFieldCfg]   = useState(false)
-  const [previewScale,   setPreviewScale]   = useState(2)
-  const [templateSlots,  setTemplateSlots]  = useState<Partial<Record<LabelTemplate, ClassicSlot[]>>>({})
-  const [locSelected,    setLocSelected]    = useState<Set<number>>(new Set())
+  const [showFieldCfg,  setShowFieldCfg]  = useState(false)
+  const [previewScale,  setPreviewScale]  = useState(2)
+  const [templateSlots, setTemplateSlots] = useState<Partial<Record<LabelTemplate, ClassicSlot[]>>>({})
+  const [locSelected,   setLocSelected]  = useState<Set<number>>(new Set())
+
+  // Export state — controls whether the off-screen export area is mounted
+  const [exportMode,    setExportMode]   = useState<'idle' | 'spools' | 'locations'>('idle')
+  const [exporting,     setExporting]    = useState(false)
+  const exportAreaRef = useRef<HTMLDivElement>(null)
 
   const { data: spoolData, isLoading: spoolsLoading } = useQuery({
     queryKey: ['spools', 'all'],
@@ -420,8 +533,8 @@ export default function QrLabelsPage() {
     queryFn: () => locationsApi.list(),
   })
 
-  const allSpools = spoolData?.items ?? []
-  const filtered  = allSpools.filter((s) => {
+  const allSpools      = spoolData?.items ?? []
+  const filtered       = allSpools.filter((s) => {
     if (!search) return true
     const q = search.toLowerCase()
     return (
@@ -435,36 +548,79 @@ export default function QrLabelsPage() {
   const selectedLocations = locations.filter((l) => locSelected.has(l.id))
 
   function toggleSpool(id: number) {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+    setSelected((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
   }
   function selectAll()  { setSelected(new Set(filtered.map((s) => s.id))) }
   function selectNone() { setSelected(new Set()) }
 
   function toggleLocation(id: number) {
-    setLocSelected((prev) => {
-      const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
-      return next
-    })
+    setLocSelected((prev) => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
   }
   function selectAllLocs()  { setLocSelected(new Set(locations.map((l) => l.id))) }
   function selectNoneLocs() { setLocSelected(new Set()) }
 
   const currentSlots = templateSlots[template] ?? TEMPLATE_DEFAULT_SLOTS[template]
-
   function updateSlots(newSlots: ClassicSlot[]) {
     setTemplateSlots((prev) => ({ ...prev, [template]: newSlots }))
   }
-
   function resetSlots() {
     setTemplateSlots((prev) => { const next = { ...prev }; delete next[template]; return next })
   }
 
   const activeEntry = TEMPLATES.find((t) => t.value === template)!
+
+  // ── PNG export ──────────────────────────────────────────────────────────────
+
+  const handleSpoolPng = useCallback(async () => {
+    setExporting(true)
+    setExportMode('spools')
+
+    // Wait two frames for the portal to render
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+
+    const container = exportAreaRef.current
+    if (!container) { setExporting(false); setExportMode('idle'); return }
+
+    const els = Array.from(container.children) as HTMLElement[]
+
+    try {
+      if (els.length === 1) {
+        const spool = selectedSpools[0]
+        await downloadSinglePng(els[0], `spool-${spool.id}.png`)
+      } else {
+        const filenames = selectedSpools.map((_, i) => `${i + 1}.png`)
+        await downloadZip(els, filenames, 'spool-labels.zip')
+      }
+    } finally {
+      setExporting(false)
+      setExportMode('idle')
+    }
+  }, [selectedSpools])
+
+  const handleLocationPng = useCallback(async () => {
+    setExporting(true)
+    setExportMode('locations')
+
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+
+    const container = exportAreaRef.current
+    if (!container) { setExporting(false); setExportMode('idle'); return }
+
+    const els = Array.from(container.children) as HTMLElement[]
+
+    try {
+      if (els.length === 1) {
+        const loc = selectedLocations[0]
+        await downloadSinglePng(els[0], `location-${loc.id}.png`)
+      } else {
+        const filenames = selectedLocations.map((_, i) => `${i + 1}.png`)
+        await downloadZip(els, filenames, 'location-labels.zip')
+      }
+    } finally {
+      setExporting(false)
+      setExportMode('idle')
+    }
+  }, [selectedLocations])
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
@@ -514,9 +670,7 @@ export default function QrLabelsPage() {
                         </p>
                         <p className="text-[11px] text-gray-500 leading-none mt-0.5">{t.size}</p>
                       </div>
-                      {active && (
-                        <div className="w-1.5 h-1.5 rounded-full bg-primary-400 shrink-0" />
-                      )}
+                      {active && <div className="w-1.5 h-1.5 rounded-full bg-primary-400 shrink-0" />}
                     </button>
                   )
                 })}
@@ -625,7 +779,6 @@ export default function QrLabelsPage() {
             {/* Toolbar */}
             <div className="flex flex-wrap items-start gap-4 px-5 py-4 border-b border-surface-border bg-surface-1 shrink-0">
 
-              {/* Columns */}
               <div className="flex flex-col gap-1">
                 <p className="text-xs text-gray-500">Columns</p>
                 <div className="flex gap-1">
@@ -645,7 +798,6 @@ export default function QrLabelsPage() {
                 </div>
               </div>
 
-              {/* QR content */}
               <div className="flex flex-col gap-1">
                 <p className="text-xs text-gray-500">QR encodes</p>
                 <div className="flex gap-1">
@@ -666,7 +818,6 @@ export default function QrLabelsPage() {
                 </div>
               </div>
 
-              {/* Field toggles */}
               <div className="flex flex-col gap-1">
                 <p className="text-xs text-gray-500">Fields</p>
                 <button
@@ -679,7 +830,6 @@ export default function QrLabelsPage() {
                 </button>
               </div>
 
-              {/* Preview size */}
               <div className="flex flex-col gap-1">
                 <p className="text-xs text-gray-500">Preview size</p>
                 <div className="flex gap-1">
@@ -699,21 +849,18 @@ export default function QrLabelsPage() {
                 </div>
               </div>
 
-              {/* Print button */}
               <div className="ml-auto flex items-end">
-                <Button
-                  onClick={() => printLabels(PRINT_AREA_ID, columns, activeEntry.mmW, activeEntry.mmH)}
+                <ExportMenuButton
+                  count={selectedSpools.length}
                   disabled={selectedSpools.length === 0}
-                >
-                  <Printer className="h-4 w-4" />
-                  Print {selectedSpools.length > 0
-                    ? `${selectedSpools.length} label${selectedSpools.length !== 1 ? 's' : ''}`
-                    : 'labels'}
-                </Button>
+                  exporting={exporting && exportMode === 'spools'}
+                  onPdf={() => printLabels(PRINT_AREA_ID, columns, activeEntry.mmW, activeEntry.mmH)}
+                  onPng={handleSpoolPng}
+                />
               </div>
             </div>
 
-            {/* Slot config popdown — same UI for all templates */}
+            {/* Slot config popdown */}
             {showFieldCfg && (
               <div className="border-b border-surface-border bg-surface-2 px-5 py-3 shrink-0">
                 <div className="flex items-center justify-between mb-2">
@@ -765,7 +912,7 @@ export default function QrLabelsPage() {
               ) : (
                 <>
                   {(() => {
-                    const px = LABEL_PX[template]
+                    const px    = LABEL_PX[template]
                     const cellW = px.w * previewScale
                     const cellH = px.h * previewScale
                     return (
@@ -776,19 +923,13 @@ export default function QrLabelsPage() {
                         {selectedSpools.map((spool) => (
                           <div key={spool.id} style={{ width: cellW, height: cellH, overflow: 'hidden' }}>
                             <div style={{ transform: `scale(${previewScale})`, transformOrigin: 'top left' }}>
-                              <SpoolLabel
-                                spool={spool}
-                                template={template}
-                                slots={currentSlots}
-                                encoding={encoding}
-                              />
+                              <SpoolLabel spool={spool} template={template} slots={currentSlots} encoding={encoding} />
                             </div>
                           </div>
                         ))}
                       </div>
                     )
                   })()}
-
                   <div className="flex items-center gap-1.5 mt-4 text-xs text-gray-600">
                     <Info className="h-3.5 w-3.5 shrink-0" />
                     Labels print at actual size ({activeEntry.size}). Set your printer to no scaling / 100%.
@@ -806,15 +947,13 @@ export default function QrLabelsPage() {
                 Location QR codes link to the public location page (no login required)
               </div>
               <div className="ml-auto">
-                <Button
-                  onClick={() => printLocationLabels(LOC_PRINT_AREA_ID)}
+                <ExportMenuButton
+                  count={selectedLocations.length}
                   disabled={selectedLocations.length === 0}
-                >
-                  <Printer className="h-4 w-4" />
-                  Print {selectedLocations.length > 0
-                    ? `${selectedLocations.length} label${selectedLocations.length !== 1 ? 's' : ''}`
-                    : 'labels'}
-                </Button>
+                  exporting={exporting && exportMode === 'locations'}
+                  onPdf={() => printLocationLabels(LOC_PRINT_AREA_ID)}
+                  onPng={handleLocationPng}
+                />
               </div>
             </div>
 
@@ -837,17 +976,11 @@ export default function QrLabelsPage() {
         )}
       </div>
 
-      {/* ── Print portals (rendered directly in document.body) ──────── */}
+      {/* ── PDF print portals ────────────────────────────────────────── */}
       {selectedSpools.length > 0 && createPortal(
         <div id={PRINT_AREA_ID} style={{ display: 'none' }}>
           {selectedSpools.map((spool) => (
-            <SpoolLabel
-              key={spool.id}
-              spool={spool}
-              template={template}
-              slots={currentSlots}
-              encoding={encoding}
-            />
+            <SpoolLabel key={spool.id} spool={spool} template={template} slots={currentSlots} encoding={encoding} />
           ))}
         </div>,
         document.body,
@@ -860,6 +993,49 @@ export default function QrLabelsPage() {
           ))}
         </div>,
         document.body,
+      )}
+
+      {/* ── PNG export portal — rendered off-screen at native pixel size ── */}
+      {exportMode !== 'idle' && createPortal(
+        <div
+          ref={exportAreaRef}
+          id={EXPORT_AREA_ID}
+          style={{
+            position: 'fixed',
+            left: -9999,
+            top: -9999,
+            visibility: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0,
+            pointerEvents: 'none',
+          }}
+        >
+          {exportMode === 'spools'
+            ? selectedSpools.map((spool) => (
+                <div key={spool.id} style={{ display: 'inline-block', lineHeight: 0 }}>
+                  <SpoolLabel spool={spool} template={template} slots={currentSlots} encoding={encoding} />
+                </div>
+              ))
+            : selectedLocations.map((loc) => (
+                <div key={loc.id} style={{ display: 'inline-block', lineHeight: 0 }}>
+                  <LocationBadgeLabel key={loc.id} location={loc} />
+                </div>
+              ))
+          }
+        </div>,
+        document.body,
+      )}
+
+      {/* ── Exporting overlay ─────────────────────────────────────────── */}
+      {exporting && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-surface-border bg-surface-1 px-8 py-6 shadow-2xl">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-surface-border border-t-primary-400" />
+            <p className="text-sm font-medium text-white">Generating images…</p>
+            <p className="text-xs text-gray-500">This may take a moment</p>
+          </div>
+        </div>
       )}
     </div>
   )

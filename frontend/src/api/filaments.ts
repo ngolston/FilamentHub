@@ -22,4 +22,12 @@ export const filamentsApi = {
 
   delete: (id: number) =>
     api.delete(`/filaments/${id}`),
+
+  uploadPhoto: (id: number, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post<FilamentProfileResponse>(`/filaments/${id}/photo`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data)
+  },
 }

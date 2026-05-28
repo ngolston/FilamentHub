@@ -1,6 +1,6 @@
 """Brands and filament profile endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -223,6 +223,32 @@ async def update_filament(
         raise HTTPException(status_code=404, detail="Filament profile not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(profile, field, value)
+    return profile
+
+
+@filaments_router.post("/{filament_id}/photo", response_model=FilamentProfileResponse)
+async def upload_filament_photo(
+    filament_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_editor),
+):
+    """Upload or replace the photo for a filament profile."""
+    from app.services.storage import upload_filament_photo as _upload
+
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be an image")
+
+    result = await db.execute(
+        select(FilamentProfile)
+        .where(FilamentProfile.id == filament_id)
+        .options(selectinload(FilamentProfile.brand))
+    )
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Filament profile not found")
+
+    profile.photo_url = await _upload(filament_id, file)
     return profile
 
 

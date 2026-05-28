@@ -155,6 +155,7 @@ export interface FilamentProfileResponse {
   is_community: boolean
   is_verified: boolean
   product_url: string | null
+  photo_url: string | null
   notes: string | null
   created_at: string
   updated_at: string
@@ -178,6 +179,7 @@ export interface FilamentProfileCreate {
   drying_temp?: number
   drying_duration?: number
   product_url?: string
+  photo_url?: string
   notes?: string
 }
 

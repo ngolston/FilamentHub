@@ -1,8 +1,9 @@
-import { useForm } from 'react-hook-form'
+import { useRef, useState } from 'react'
+import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { X } from 'lucide-react'
+import { Upload, X } from 'lucide-react'
 import { filamentsApi } from '@/api/filaments'
 import { brandsApi } from '@/api/brands'
 import { Button } from '@/components/ui/Button'
@@ -17,7 +18,20 @@ const schema = z.object({
   material: z.string().min(1, 'Material is required'),
   brand_id: z.coerce.number().optional(),
   color_name: z.string().optional(),
-  color_hex: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Must be a hex color like #ff0000').optional().or(z.literal('')),
+  // Accept with or without leading #; normalize to always include it
+  color_hex: z.string()
+    .transform((v) => {
+      if (!v) return ''
+      return v.startsWith('#') ? v : `#${v}`
+    })
+    .pipe(
+      z.string()
+        .regex(/^(#[0-9a-fA-F]{6})?$/, 'Must be a 6-digit hex colour, e.g. 4f46e5')
+        .optional()
+        .or(z.literal(''))
+    )
+    .optional()
+    .or(z.literal('')),
   diameter: z.coerce.number().positive().optional(),
   density: z.coerce.number().positive().optional(),
   print_temp_min: z.coerce.number().optional(),
@@ -40,48 +54,71 @@ export function FilamentFormModal({ filament, onClose }: Props) {
   const queryClient = useQueryClient()
   const isEdit = !!filament
 
+  const [photoFile, setPhotoFile]     = useState<File | null>(null)
+  const [photoUrl,  setPhotoUrl]      = useState(filament?.photo_url ?? '')
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const { data: brands = [] } = useQuery({
     queryKey: ['brands'],
     queryFn: () => brandsApi.list(),
   })
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, control, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      name: filament?.name ?? '',
-      material: filament?.material ?? 'PLA',
-      brand_id: filament?.brand?.id,
-      color_name: filament?.color_name ?? '',
-      color_hex: filament?.color_hex ?? '',
-      diameter: filament?.diameter ?? 1.75,
-      density: filament?.density ?? undefined,
-      print_temp_min: filament?.print_temp_min ?? undefined,
-      print_temp_max: filament?.print_temp_max ?? undefined,
-      bed_temp_min: filament?.bed_temp_min ?? undefined,
-      bed_temp_max: filament?.bed_temp_max ?? undefined,
-      drying_temp: filament?.drying_temp ?? undefined,
+      name:         filament?.name ?? '',
+      material:     filament?.material ?? 'PLA',
+      brand_id:     filament?.brand?.id,
+      color_name:   filament?.color_name ?? '',
+      // Strip # for the input display; the schema normalizes it back
+      color_hex:    filament?.color_hex?.replace(/^#/, '') ?? '',
+      diameter:     filament?.diameter ?? 1.75,
+      density:      filament?.density ?? undefined,
+      print_temp_min:  filament?.print_temp_min ?? undefined,
+      print_temp_max:  filament?.print_temp_max ?? undefined,
+      bed_temp_min:    filament?.bed_temp_min ?? undefined,
+      bed_temp_max:    filament?.bed_temp_max ?? undefined,
+      drying_temp:     filament?.drying_temp ?? undefined,
       drying_duration: filament?.drying_duration ?? undefined,
-      product_url: filament?.product_url ?? '',
-      notes: filament?.notes ?? '',
+      product_url:  filament?.product_url ?? '',
+      notes:        filament?.notes ?? '',
     },
   })
 
-  const colorHex = watch('color_hex')
+  // Live hex for the swatch preview — normalise on the fly
+  const rawHex = watch('color_hex') ?? ''
+  const previewHex = /^#?[0-9a-fA-F]{6}$/.test(rawHex)
+    ? (rawHex.startsWith('#') ? rawHex : `#${rawHex}`)
+    : null
+
+  function handlePhotoFile(file: File) {
+    if (!file.type.startsWith('image/')) return
+    setPhotoFile(file)
+    const url = URL.createObjectURL(file)
+    setPhotoPreview(url)
+    setPhotoUrl('')
+  }
 
   const mutation = useMutation({
-    mutationFn: (data: FormData) => {
+    mutationFn: async (data: FormData) => {
       const payload = {
         ...data,
-        color_hex: data.color_hex || undefined,
+        color_hex:   data.color_hex || undefined,
         product_url: data.product_url || undefined,
-        brand_id: data.brand_id || undefined,
+        brand_id:    data.brand_id || undefined,
+        photo_url:   !photoFile ? (photoUrl || undefined) : undefined,
       }
-      return isEdit
-        ? filamentsApi.update(filament.id, payload)
-        : filamentsApi.create(payload as Parameters<typeof filamentsApi.create>[0])
+      const saved = isEdit
+        ? await filamentsApi.update(filament.id, payload)
+        : await filamentsApi.create(payload as Parameters<typeof filamentsApi.create>[0])
+
+      if (photoFile) await filamentsApi.uploadPhoto(saved.id, photoFile)
+      return saved
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['filaments'] })
+      queryClient.invalidateQueries({ queryKey: ['spools'] })
       onClose()
     },
   })
@@ -98,6 +135,7 @@ export function FilamentFormModal({ filament, onClose }: Props) {
         </div>
 
         <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-5">
+
           {/* Basic info */}
           <Section label="Basic info">
             <div className="grid grid-cols-2 gap-3">
@@ -138,21 +176,99 @@ export function FilamentFormModal({ filament, onClose }: Props) {
           <Section label="Colour">
             <div className="grid grid-cols-2 gap-3">
               <Input label="Colour name" placeholder="Bambu Green, Galaxy Black, …" {...register('color_name')} />
+
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium text-gray-300">Hex colour</label>
                 <div className="flex items-center gap-2">
+                  {/* Live swatch */}
                   <div
-                    className="h-9 w-9 shrink-0 rounded-lg border border-surface-border"
-                    style={{ backgroundColor: colorHex?.match(/^#[0-9a-fA-F]{6}$/) ? colorHex : '#374151' }}
+                    className="h-9 w-9 shrink-0 rounded-lg border border-surface-border transition-colors"
+                    style={{ backgroundColor: previewHex ?? '#374151' }}
                   />
-                  <input
-                    {...register('color_hex')}
-                    placeholder="#1a2b3c"
-                    className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-primary-500 focus:outline-none"
+                  {/* # prefix + hex-only input */}
+                  <Controller
+                    name="color_hex"
+                    control={control}
+                    render={({ field }) => (
+                      <div className="flex flex-1 overflow-hidden rounded-lg border border-surface-border focus-within:border-primary-500">
+                        <span className="flex items-center px-2 text-gray-400 bg-surface-3 text-sm select-none border-r border-surface-border">
+                          #
+                        </span>
+                        <input
+                          value={(field.value ?? '').replace(/^#/, '')}
+                          onChange={(e) => {
+                            // Strip any accidental # the user pastes, keep only hex chars
+                            const clean = e.target.value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6)
+                            field.onChange(clean)
+                          }}
+                          placeholder="1a2b3c"
+                          maxLength={6}
+                          className="flex-1 bg-surface-2 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:outline-none font-mono"
+                        />
+                      </div>
+                    )}
                   />
                 </div>
                 {errors.color_hex && <p className="text-xs text-red-400">{errors.color_hex.message}</p>}
               </div>
+            </div>
+          </Section>
+
+          {/* Photo */}
+          <Section label="Photo">
+            {/* File drop / click area */}
+            {(photoPreview || photoUrl) ? (
+              <div className="relative w-full h-36 rounded-xl overflow-hidden border border-surface-border">
+                <img
+                  src={photoPreview ?? photoUrl}
+                  alt="Filament photo"
+                  className="w-full h-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => { setPhotoFile(null); setPhotoPreview(null); setPhotoUrl('') }}
+                  className="absolute top-2 right-2 rounded-full bg-black/70 p-1.5 text-white hover:bg-black transition-colors"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="absolute bottom-2 right-2 rounded-lg bg-black/70 px-3 py-1.5 text-xs text-white hover:bg-black transition-colors backdrop-blur-sm"
+                >
+                  Change photo
+                </button>
+              </div>
+            ) : (
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="flex flex-col items-center justify-center gap-2 h-28 w-full rounded-xl border-2 border-dashed border-surface-border cursor-pointer hover:border-gray-600 bg-surface-2 transition-colors"
+              >
+                <Upload className="h-6 w-6 text-gray-500" />
+                <p className="text-sm text-gray-400">
+                  Drop or <span className="text-primary-400">click to upload</span>
+                </p>
+                <p className="text-xs text-gray-600">JPEG · PNG · WebP</p>
+              </div>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handlePhotoFile(f) }}
+            />
+
+            {/* URL fallback */}
+            <div className="flex flex-col gap-1 mt-2">
+              <label className="text-xs text-gray-500">Or enter a photo URL</label>
+              <input
+                type="url"
+                value={photoUrl}
+                onChange={(e) => { setPhotoUrl(e.target.value); if (e.target.value) { setPhotoFile(null); setPhotoPreview(null) } }}
+                placeholder="https://example.com/photo.jpg"
+                className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white placeholder:text-gray-500 focus:border-primary-500 focus:outline-none"
+              />
             </div>
           </Section>
 

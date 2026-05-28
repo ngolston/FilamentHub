@@ -15,6 +15,7 @@ import { printersApi } from '@/api/printers'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { getErrorMessage } from '@/api/client'
+import { hexToBasicColor, BASIC_COLORS, BASIC_COLOR_META } from '@/utils/colors'
 import type { FilamentProfileResponse, BrandResponse, LocationResponse, SpoolResponse, SpoolStatus, PrinterResponse } from '@/types/api'
 
 // ── Assignment types ──────────────────────────────────────────────────────────
@@ -342,7 +343,13 @@ function StringSmartDropdown({
 
 // ── ColorPicker ───────────────────────────────────────────────────────────────
 
-function ColorPicker({ value, onChange }: { value: string; onChange: (hex: string) => void }) {
+function ColorPicker({
+  value, onChange, onPresetSelect,
+}: {
+  value: string
+  onChange: (hex: string) => void
+  onPresetSelect?: (label: string, hex: string) => void
+}) {
   const [customHex, setCustomHex] = useState(
     COLOR_PRESETS.some((c) => c.hex.toLowerCase() === value?.toLowerCase()) ? '' : (value ?? ''),
   )
@@ -357,7 +364,7 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (hex: strin
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
         {COLOR_PRESETS.map((c) => (
-          <button key={c.hex} type="button" title={c.label} onClick={() => { setCustomHex(''); onChange(c.hex) }}
+          <button key={c.hex} type="button" title={c.label} onClick={() => { setCustomHex(''); onChange(c.hex); onPresetSelect?.(c.label, c.hex) }}
             className="h-7 w-7 rounded-full border-2 transition-all"
             style={{ backgroundColor: c.hex, borderColor: value?.toLowerCase() === c.hex.toLowerCase() ? '#fff' : 'transparent', boxShadow: value?.toLowerCase() === c.hex.toLowerCase() ? '0 0 0 1px #6366f1' : 'none' }}
           />
@@ -978,7 +985,7 @@ export default function EditSpoolPage() {
     if (spool.brand)               setSelectedBrand(spool.brand)
     if (spool.location)            setSelectedLocation(spool.location)
     if (spool.filament)            setSelectedFilament(spool.filament)
-    setPhotoUrl(spool.photo_url ?? '')
+    setPhotoUrl(spool.photo_url ?? spool.filament?.photo_url ?? '')
     setStatus(spool.status)
   }, [spool, reset])
 
@@ -1306,6 +1313,37 @@ export default function EditSpoolPage() {
 
             <Input label="Color name" placeholder='e.g. "Bambu Blue"' {...register('color_name')} />
 
+            {/* Color family */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-gray-300">Color family</label>
+              <div className="flex flex-wrap gap-1.5">
+                {BASIC_COLORS.map((family) => {
+                  const meta = BASIC_COLOR_META[family]
+                  const isActive = colorHex && hexToBasicColor(colorHex) === family
+                  return (
+                    <button
+                      key={family}
+                      type="button"
+                      onClick={() => {
+                        const hex = meta.dot
+                        setColorHex(hex)
+                        setValue('color_hex', hex)
+                        setValue('color_name', meta.label)
+                      }}
+                      className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                        isActive
+                          ? 'border-primary-500 bg-primary-600/20 text-primary-300'
+                          : 'border-surface-border text-gray-400 hover:border-gray-500 hover:text-gray-200'
+                      }`}
+                    >
+                      <span className="h-3 w-3 rounded-full border border-white/20 shrink-0" style={{ backgroundColor: meta.dot }} />
+                      {meta.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
             {/* Multi-color picker */}
             <div className="flex flex-col gap-2.5">
               <label className="text-sm font-medium text-gray-300">Colors <span className="text-gray-500 font-normal">(up to 4)</span></label>
@@ -1379,6 +1417,9 @@ export default function EditSpoolPage() {
                     if (activeColorSlot === 2) { setColorHex2(hex); setValue('extra_color_hex_2', hex) }
                     if (activeColorSlot === 3) { setColorHex3(hex); setValue('extra_color_hex_3', hex) }
                     if (activeColorSlot === 4) { setColorHex4(hex); setValue('extra_color_hex_4', hex) }
+                  }}
+                  onPresetSelect={(label) => {
+                    if (activeColorSlot === 1) setValue('color_name', label)
                   }}
                 />
               </div>

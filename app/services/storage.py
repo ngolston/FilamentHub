@@ -49,6 +49,22 @@ async def upload_avatar(user_id: str, file: UploadFile) -> str:
     return f"{MEDIA_PREFIX}/avatars/{user_id}/{filename}"
 
 
+async def upload_filament_photo(filament_id: int, file: UploadFile) -> str:
+    """Save a filament profile photo to disk and return its public URL."""
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
+    if ext not in {"jpg", "jpeg", "png", "webp", "gif"}:
+        ext = "jpg"
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    dest_dir = _ensure_dir(settings.photos_path / "filaments" / str(filament_id))
+    dest = dest_dir / filename
+
+    content = await file.read()
+    async with aiofiles.open(dest, "wb") as f:
+        await f.write(content)
+
+    return f"{MEDIA_PREFIX}/filaments/{filament_id}/{filename}"
+
+
 async def upload_print_job_photo(job_id: int, file: UploadFile) -> str:
     """Save a print job photo to disk and return its public URL."""
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"

@@ -144,10 +144,10 @@ function SpoolDetailModal({ spool, onClose, onEdit }: {
       <div className="absolute inset-0 bg-black/70" onClick={onClose} />
       <div className="relative w-full max-w-2xl rounded-2xl border border-surface-border bg-surface-1 shadow-2xl max-h-[90vh] overflow-y-auto">
 
-        {/* Photo header */}
-        {spool.photo_url && (
+        {/* Photo header — spool photo, falling back to filament profile photo */}
+        {(spool.photo_url ?? spool.filament?.photo_url) && (
           <div className="relative h-48 w-full overflow-hidden rounded-t-2xl">
-            <img src={spool.photo_url} alt={name} className="w-full h-full object-cover" />
+            <img src={spool.photo_url ?? spool.filament!.photo_url!} alt={name} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-surface-1/90" />
           </div>
         )}
