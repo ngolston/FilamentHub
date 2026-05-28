@@ -17,8 +17,11 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 })
 
 // ─── Token storage (in-memory) ────────────────────────────────────────────────
-// Access token lives only in memory; refresh token in sessionStorage so it
-// survives a page reload without being accessible to XSS via document.cookie.
+// Access token lives only in memory.
+// Refresh token goes to localStorage when "remember me" is checked (persists
+// across browser restarts), otherwise sessionStorage (cleared on close).
+
+const REFRESH_KEY = 'fh_refresh'
 
 let _accessToken: string | null = null
 
@@ -26,18 +29,26 @@ export function getAccessToken() {
   return _accessToken
 }
 
-export function setTokens(accessToken: string, refreshToken: string) {
+export function setTokens(accessToken: string, refreshToken: string, persistent = false) {
   _accessToken = accessToken
-  sessionStorage.setItem('fh_refresh', refreshToken)
+  if (persistent) {
+    localStorage.setItem(REFRESH_KEY, refreshToken)
+    sessionStorage.removeItem(REFRESH_KEY)
+  } else {
+    sessionStorage.setItem(REFRESH_KEY, refreshToken)
+    localStorage.removeItem(REFRESH_KEY)
+  }
 }
 
 export function clearTokens() {
   _accessToken = null
-  sessionStorage.removeItem('fh_refresh')
+  sessionStorage.removeItem(REFRESH_KEY)
+  localStorage.removeItem(REFRESH_KEY)
 }
 
 export function getRefreshToken() {
-  return sessionStorage.getItem('fh_refresh')
+  // localStorage first (persistent login), fall back to sessionStorage
+  return localStorage.getItem(REFRESH_KEY) ?? sessionStorage.getItem(REFRESH_KEY)
 }
 
 // ─── Auto-refresh on 401 ──────────────────────────────────────────────────────

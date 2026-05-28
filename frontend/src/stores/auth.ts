@@ -8,7 +8,7 @@ interface AuthState {
   isLoading: boolean
   isInitialized: boolean
 
-  login: (credentials: UserLogin) => Promise<void>
+  login: (credentials: UserLogin, rememberMe?: boolean) => Promise<void>
   register: (data: UserRegister) => Promise<UserResponse>
   logout: () => void
   fetchMe: () => Promise<void>
@@ -20,11 +20,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   isLoading: false,
   isInitialized: false,
 
-  login: async (credentials) => {
+  login: async (credentials, rememberMe = false) => {
     set({ isLoading: true })
     try {
       const tokens = await authApi.login(credentials)
-      setTokens(tokens.access_token, tokens.refresh_token)
+      setTokens(tokens.access_token, tokens.refresh_token, rememberMe)
       const user = await authApi.me()
       set({ user, isLoading: false })
     } catch (err) {

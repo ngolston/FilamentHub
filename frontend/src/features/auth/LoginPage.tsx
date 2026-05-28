@@ -22,6 +22,9 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [serverError, setServerError] = useState<string | null>(null)
+  const [rememberMe, setRememberMe] = useState(
+    () => localStorage.getItem('fh_remember') === 'true'
+  )
 
   const { data: publicConfig } = useQuery({
     queryKey: ['system', 'public-config'],
@@ -37,12 +40,17 @@ export default function LoginPage() {
   async function onSubmit(data: FormData) {
     setServerError(null)
     try {
-      await login(data)
+      await login(data, rememberMe)
       const redirect = searchParams.get('redirect')
       navigate(redirect ?? '/', { replace: true })
     } catch (err) {
       setServerError(getErrorMessage(err))
     }
+  }
+
+  function handleRememberMe(checked: boolean) {
+    setRememberMe(checked)
+    localStorage.setItem('fh_remember', String(checked))
   }
 
   return (
@@ -86,6 +94,33 @@ export default function LoginPage() {
               </Link>
             </div>
           </div>
+
+          {/* Remember me */}
+          <label className="flex items-center gap-2.5 cursor-pointer select-none group">
+            <div className="relative flex items-center">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => handleRememberMe(e.target.checked)}
+                className="peer sr-only"
+              />
+              <div className={`
+                h-4 w-4 rounded border transition-colors flex items-center justify-center
+                ${rememberMe
+                  ? 'bg-primary-600 border-primary-600'
+                  : 'bg-surface-2 border-surface-border group-hover:border-gray-500'}
+              `}>
+                {rememberMe && (
+                  <svg className="h-2.5 w-2.5 text-white" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+            </div>
+            <span className="text-sm text-gray-400 group-hover:text-gray-300 transition-colors">
+              Remember me
+            </span>
+          </label>
 
           {serverError && (
             <p className="rounded-lg bg-red-900/40 border border-red-700/50 px-3 py-2 text-sm text-red-300">
