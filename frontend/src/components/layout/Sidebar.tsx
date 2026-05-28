@@ -9,7 +9,6 @@ import {
   Printer,
   ClipboardList,
   Database,
-  Globe,
   Flame,
   QrCode,
   Bell,

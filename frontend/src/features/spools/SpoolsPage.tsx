@@ -6,7 +6,7 @@ import {
   CheckSquare, Trash2, AlertTriangle,
   Printer, MapPin, Scale, Tag, Calendar, DollarSign,
   Thermometer, Droplets, Gauge, Hash, Link2, Pencil,
-  Bookmark, BookmarkCheck, Columns3,
+  Bookmark, Columns3,
   Archive, PackageOpen, Globe,
 } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
@@ -27,7 +27,6 @@ import type { SpoolResponse, SpoolStatus } from '@/types/api'
 import type { SortKey, ColumnDef } from './SpoolTable'
 import { Badge } from '@/components/ui/Badge'
 import { getStoredGeneralPrefs } from '@/hooks/useGeneralPrefs'
-import type { GeneralPrefs } from '@/hooks/useGeneralPrefs'
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 interface Toast { id: string; msg: string; type?: 'success' | 'error' }
@@ -685,13 +684,6 @@ function FilterSelect({ value, onChange, label, options }: {
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
-function toSortKey(s: GeneralPrefs['sort_order']): SortKey {
-  if (s === 'fill_pct')  return 'fill_pct'
-  if (s === 'material')  return 'material'
-  if (s === 'brand')     return 'name'
-  return 'last_used'
-}
-
 export default function SpoolsPage() {
   const { isEditor }       = useAuth()
   const navigate           = useNavigate()
@@ -1560,7 +1552,7 @@ export default function SpoolsPage() {
           spool={quickEdit}
           locations={allLocations}
           onClose={() => setQuickEdit(null)}
-          onSave={(data) => updateMutation.mutateAsync({ id: quickEdit.id, data })}
+          onSave={(data) => updateMutation.mutateAsync({ id: quickEdit.id, data }).then(() => {})}
         />
       )}
 

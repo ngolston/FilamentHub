@@ -428,7 +428,7 @@ function PrinterCard({ printer, spoolMap, onClickSpool }: {
                       const spool = slot.spool_id ? spoolMap.get(slot.spool_id) : undefined
                       return (
                         <SlotTile
-                          key={slot.id}
+                          key={slot.slot_index}
                           label={`${letter}${slot.slot_index + 1}`}
                           spool={spool}
                           onClickSpool={onClickSpool}
@@ -702,7 +702,7 @@ export default function LocationsPage() {
           spool={quickEdit}
           locations={storageLocations}
           onClose={() => setQuickEdit(null)}
-          onSave={(data) => updateMutation.mutateAsync({ id: quickEdit.id, data })}
+          onSave={(data) => updateMutation.mutateAsync({ id: quickEdit.id, data }).then(() => {})}
         />
       )}
 

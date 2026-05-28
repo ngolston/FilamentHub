@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/Button'
 import { Spinner } from '@/components/ui/Spinner'
 import { cn } from '@/utils/cn'
 import type { ProjectResponse, PlateDatum, ProjectComment, ProjectUpdate } from '@/types/api'
-import { BUILTIN_STATUSES, getCustomStatuses, saveCustomStatuses, statusColor, getAllStatuses } from './projectStatuses'
+import { BUILTIN_STATUSES, getCustomStatuses, saveCustomStatuses, statusColor } from './projectStatuses'
 import type { StatusEntry } from './projectStatuses'
 import { formatDuration } from './JobDetailModal'
 
@@ -321,9 +321,8 @@ function MaterialCostSection({ plates }: { plates: PlateDatum[] }) {
 // ── CommentsSection ───────────────────────────────────────────────────────────
 
 function CommentsSection({
-  projectId, comments, onSave,
+  comments, onSave,
 }: {
-  projectId: number
   comments: ProjectComment[]
   onSave: (comments: ProjectComment[]) => Promise<void>
 }) {
@@ -492,7 +491,6 @@ export default function ProjectDetailPage() {
   if (!project)  return <div className="p-8 text-center text-gray-500">Project not found.</div>
 
   const displayName   = editing ? (editForm.name ?? project.name) : project.name
-  const displayStatus = editing ? (editForm.status ?? null) : project.status
   const plates        = editing ? editPlates : (project.plate_data ?? [])
   const totalTime     = plates.reduce((s, p) => s + p.prediction_seconds, 0)
   const totalWeight   = plates.reduce((s, p) => s + p.weight_g, 0)
@@ -724,7 +722,6 @@ export default function ProjectDetailPage() {
 
       {/* ── Comments ────────────────────────────────────────────────────────── */}
       <CommentsSection
-        projectId={projectId}
         comments={project.comments ?? []}
         onSave={saveComments}
       />

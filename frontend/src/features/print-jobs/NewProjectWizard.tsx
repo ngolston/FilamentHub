@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button'
 import { cn } from '@/utils/cn'
 import type { ProjectResponse, PlateDatum } from '@/types/api'
 import {
-  BUILTIN_STATUSES, CUSTOM_STATUSES_KEY,
+  BUILTIN_STATUSES,
   getCustomStatuses, saveCustomStatuses,
 } from './projectStatuses'
 import type { StatusEntry } from './projectStatuses'

@@ -53,7 +53,7 @@ export default function PublicSpoolPage() {
   const diameter = fp?.diameter ?? null
 
   function handleEdit() {
-    const target = `/spools/${spool.id}/edit`
+    const target = `/spools/${spool!.id}/edit`
     navigate(`/login?redirect=${encodeURIComponent(target)}`)
   }
 

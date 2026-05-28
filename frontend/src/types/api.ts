@@ -264,7 +264,7 @@ export interface SpoolCreate {
   notes?: string
 }
 
-export type SpoolUpdate = Omit<Partial<SpoolCreate>, 'photo_url'> & { photo_url?: string | null }
+export type SpoolUpdate = Omit<Partial<SpoolCreate>, 'photo_url' | 'location_id'> & { photo_url?: string | null; location_id?: number | null }
 
 export interface SpoolFilters extends PaginationParams {
   status?: SpoolStatus | string   // single value or comma-separated list e.g. 'active,storage'
