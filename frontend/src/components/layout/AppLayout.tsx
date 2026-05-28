@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react'
-import { Outlet, useLocation } from 'react-router-dom'
-import { Search } from 'lucide-react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import {
+  Search,
+  LayoutDashboard,
+  Package,
+  ClipboardList,
+  Printer,
+  Settings,
+} from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { CommandPalette } from '@/features/search/CommandPalette'
 import { OnboardingFlow, isOnboardingComplete } from '@/features/onboarding/OnboardingFlow'
@@ -21,6 +28,14 @@ const PAGE_TITLES: Record<string, string> = {
   '/analytics':       'Analytics',
   '/cost-estimator':  'Print Cost Estimator',
 }
+
+const BOTTOM_NAV = [
+  { to: '/',           label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/spools',     label: 'Spools',    icon: Package },
+  { to: '/print-jobs', label: 'Projects',  icon: ClipboardList },
+  { to: '/printers',   label: 'Printers',  icon: Printer },
+  { to: '/settings',   label: 'Settings',  icon: Settings },
+]
 
 export function AppLayout() {
   const [sidebarOpen,    setSidebarOpen]    = useState(false)
@@ -49,14 +64,14 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
-      {/* Desktop sidebar */}
-      <div className="hidden lg:flex lg:shrink-0">
+      {/* Sidebar — always visible on md+ (iPad portrait and up) */}
+      <div className="hidden md:flex md:shrink-0">
         <Sidebar />
       </div>
 
-      {/* Mobile sidebar overlay */}
+      {/* Mobile sidebar overlay — phones only */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40 lg:hidden">
+        <div className="fixed inset-0 z-40 md:hidden">
           <div
             className="absolute inset-0 bg-black/60 animate-fade-in"
             onClick={() => setSidebarOpen(false)}
@@ -70,13 +85,14 @@ export function AppLayout() {
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
 
-        {/* Top bar — desktop + mobile */}
+        {/* Top bar */}
         <header className="flex h-12 shrink-0 items-center justify-between gap-4 border-b border-surface-border bg-surface-1 px-4">
-          {/* Mobile: hamburger + page title */}
-          <div className="flex items-center gap-3 lg:hidden">
+          {/* Phone: hamburger (access to non-tab routes) + page title */}
+          <div className="flex items-center gap-3 md:hidden">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="rounded-md p-1.5 text-gray-400 hover:bg-surface-2 hover:text-white transition-colors"
+              className="rounded-md p-2 text-gray-400 hover:bg-surface-2 hover:text-white transition-colors"
+              aria-label="Open menu"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -85,8 +101,8 @@ export function AppLayout() {
             <span className="text-sm font-semibold text-white truncate">{title}</span>
           </div>
 
-          {/* Desktop: page title */}
-          <span className="hidden lg:block text-sm font-semibold text-white">{title}</span>
+          {/* Tablet/desktop: page title */}
+          <span className="hidden md:block text-sm font-semibold text-white">{title}</span>
 
           {/* Search trigger */}
           <button
@@ -94,21 +110,47 @@ export function AppLayout() {
             className={cn(
               'flex items-center gap-2 rounded-lg border border-surface-border bg-surface-2',
               'px-3 py-1.5 text-sm text-gray-500 hover:border-gray-500 hover:text-gray-300 transition-colors',
-              'lg:w-56',
+              'md:w-56',
             )}
           >
             <Search className="h-3.5 w-3.5 shrink-0" />
-            <span className="hidden lg:block flex-1 text-left text-xs">Search…</span>
-            <kbd className="hidden lg:inline-flex items-center gap-0.5 rounded border border-surface-border px-1 font-mono text-[10px] text-gray-600">
+            <span className="hidden md:block flex-1 text-left text-xs">Search…</span>
+            <kbd className="hidden md:inline-flex items-center gap-0.5 rounded border border-surface-border px-1 font-mono text-[10px] text-gray-600">
               ⌘K
             </kbd>
           </button>
         </header>
 
-        <main className="flex-1 overflow-y-auto">
+        {/* Scrollable page content — clears the bottom tab bar on phones */}
+        <main className="flex-1 overflow-y-auto pb-tab-bar md:pb-0">
           <Outlet />
         </main>
       </div>
+
+      {/* Bottom tab bar — phones only (below md / 768px) */}
+      <nav
+        className="fixed bottom-0 inset-x-0 z-30 md:hidden border-t border-surface-border bg-surface-1"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="flex">
+          {BOTTOM_NAV.map(({ to, label, icon: Icon }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={to === '/'}
+              className={({ isActive }) =>
+                cn(
+                  'flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors',
+                  isActive ? 'text-primary-300' : 'text-gray-500',
+                )
+              }
+            >
+              <Icon className="h-5 w-5" />
+              {label}
+            </NavLink>
+          ))}
+        </div>
+      </nav>
 
       {/* Command palette */}
       <CommandPalette isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} />

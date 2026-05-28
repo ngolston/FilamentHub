@@ -164,6 +164,18 @@
 .theme-light .bg-red-500.text-white,
 .theme-light .bg-accent-600.text-white { color: #ffffff; }
 
+/* ── iOS safe-area utilities ─────────────────────────────────────────────── */
+/* Used for bottom tab bar and content clearance on notched iPhones          */
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.pb-tab-bar {
+  /* bottom tab bar height (56px) + home indicator safe area */
+  padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
+}
+
 /* ── Reduce motion ───────────────────────────────────────────────────────── */
 
 html.reduce-motion * {
