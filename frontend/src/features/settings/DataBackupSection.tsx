@@ -47,9 +47,14 @@ export function DataBackupSection() {
   const pdfMutation = useMutation({
     mutationFn: async () => {
       setPdfError(null)
-      // Fetch all spools (up to 1000 — plenty for a print report)
-      const result = await spoolsApi.list({ page_size: 1000 })
-      exportInventoryPdf(result.items, user?.display_name ?? user?.email)
+      // Fetch all spools across pages (backend caps page_size at 200)
+      const first = await spoolsApi.list({ page_size: 200, page: 1 })
+      const items = [...first.items]
+      for (let p = 2; p <= first.pages; p++) {
+        const page = await spoolsApi.list({ page_size: 200, page: p })
+        items.push(...page.items)
+      }
+      exportInventoryPdf(items, user?.display_name ?? user?.email)
     },
     onError: (err) => setPdfError(getErrorMessage(err)),
   })

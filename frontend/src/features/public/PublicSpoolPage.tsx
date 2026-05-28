@@ -6,6 +6,7 @@ import {
   Gauge, Link2, Wind,
 } from 'lucide-react'
 import { publicApi } from '@/api/public'
+import { useAuthStore } from '@/stores/auth'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -42,6 +43,7 @@ function TempRange({ min, max }: { min: number | null | undefined; max: number |
 export default function PublicSpoolPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const user = useAuthStore((s) => s.user)
   const spoolId = Number(id)
 
   const { data: spool, isLoading, isError } = useQuery({
@@ -291,11 +293,14 @@ export default function PublicSpoolPage() {
 
         {/* Edit button */}
         <button
-          onClick={() => navigate(`/login?redirect=${encodeURIComponent(`/spools/${spool.id}/edit`)}`)}
+          onClick={() => {
+            const target = `/spools/${spool.id}/edit`
+            navigate(user ? target : `/login?redirect=${encodeURIComponent(target)}`)
+          }}
           className="w-full flex items-center justify-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-600/10 px-4 py-3 text-sm font-medium text-indigo-300 hover:bg-indigo-600/20 transition-colors"
         >
           <ExternalLink className="h-4 w-4" />
-          Edit this spool (login required)
+          {user ? 'Edit this spool' : 'Edit this spool (login required)'}
         </button>
 
         <p className="text-center text-xs text-gray-600 pb-4">
