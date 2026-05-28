@@ -46,8 +46,8 @@ export default function SettingsPage() {
   const Section = sections.find((s) => s.id === active)?.component ?? ProfileSection
 
   return (
-    <div className="flex h-full min-h-0">
-      {/* ── Sidebar ─────────────────────────────────────────────────── */}
+    <div className="flex flex-col lg:flex-row h-full min-h-0">
+      {/* ── Sidebar (desktop only) ───────────────────────────────────── */}
       <nav className="hidden lg:flex flex-col w-52 shrink-0 border-r border-surface-border py-6 px-3 gap-0.5">
         <p className="px-3 mb-3 text-xs font-semibold uppercase tracking-widest text-gray-500">
           Settings
@@ -77,8 +77,21 @@ export default function SettingsPage() {
         })}
       </nav>
 
-      {/* ── Mobile tab bar ──────────────────────────────────────────── */}
-      <div className="lg:hidden border-b border-surface-border px-4 pt-4 pb-0 overflow-x-auto flex gap-1 shrink-0 w-full">
+      {/* ── Phone: select dropdown ───────────────────────────────────── */}
+      <div className="sm:hidden shrink-0 border-b border-surface-border px-4 py-3">
+        <select
+          value={active}
+          onChange={(e) => setActive(e.target.value as SectionId)}
+          className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2.5 text-sm text-white focus:border-primary-500 focus:outline-none"
+        >
+          {sections.map((s) => (
+            <option key={s.id} value={s.id}>{s.label}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* ── Tablet: scrollable tab strip ─────────────────────────────── */}
+      <div className="hidden sm:flex lg:hidden shrink-0 border-b border-surface-border px-4 pt-4 pb-0 overflow-x-auto gap-1">
         {sections.map((s) => {
           const isDanger = s.danger
           return (
@@ -86,7 +99,7 @@ export default function SettingsPage() {
               key={s.id}
               onClick={() => setActive(s.id as SectionId)}
               className={cn(
-                'shrink-0 rounded-t-lg px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-colors border-b-2',
+                'shrink-0 rounded-t-lg px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors border-b-2',
                 active === s.id
                   ? isDanger
                     ? 'border-red-500 text-red-300'
@@ -101,7 +114,7 @@ export default function SettingsPage() {
       </div>
 
       {/* ── Content ─────────────────────────────────────────────────── */}
-      <main className="flex-1 overflow-y-auto p-5 lg:p-8 max-w-2xl">
+      <main className="flex-1 overflow-y-auto p-4 sm:p-5 lg:p-8 max-w-2xl">
         <Section />
       </main>
     </div>
