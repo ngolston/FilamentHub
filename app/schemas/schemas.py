@@ -426,14 +426,92 @@ class SpoolUsageResponse(OrmBase):
 
 # ── Projects ──────────────────────────────────────────────────────────────────
 
+class FilamentEstimateItem(BaseModel):
+    color_name: str | None = None
+    color_hex: str | None = None
+    material: str | None = None
+    amount_g: float | None = None
+
+
+class PlateFilament(BaseModel):
+    type: str
+    color: str
+    used_g: float
+
+
+class PlateDatum(BaseModel):
+    index: int
+    prediction_seconds: int = 0
+    weight_g: float = 0.0
+    objects: list[str] = []
+    filaments: list[PlateFilament] = []
+    status: str | None = None
+    printer_id: int | None = None
+    notes: str | None = None
+
+
+class ProjectComment(BaseModel):
+    id: str
+    text: str
+    created_at: str  # ISO datetime string
+
+
 class ProjectCreate(BaseModel):
-    name: str
+    name: Annotated[str, Field(min_length=1, max_length=300)]
+    description: str | None = None
+    status: str | None = None
+    client_requestor: str | None = None
+    design_link: str | None = None
+    is_priority: bool = False
+    designer: str | None = None
+    estimated_print_time_seconds: int | None = None
+    filament_estimates: list[FilamentEstimateItem] | None = None
+    plate_data: list[PlateDatum] | None = None
+
+
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    status: str | None = None
+    client_requestor: str | None = None
+    design_link: str | None = None
+    is_priority: bool | None = None
+    designer: str | None = None
+    estimated_print_time_seconds: int | None = None
+    filament_estimates: list[FilamentEstimateItem] | None = None
+    plate_data: list[PlateDatum] | None = None
+    comments: list[ProjectComment] | None = None
+
+
+def _parse_json_field(v: object) -> list:
+    import json
+    if isinstance(v, str):
+        try:
+            return json.loads(v)
+        except Exception:
+            return []
+    return v or []
 
 
 class ProjectResponse(OrmBase):
     id: int
     name: str
+    description: str | None = None
+    status: str | None = None
+    client_requestor: str | None = None
+    design_link: str | None = None
+    is_priority: bool = False
+    designer: str | None = None
+    estimated_print_time_seconds: int | None = None
+    filament_estimates: list[FilamentEstimateItem] = []
+    plate_data: list[PlateDatum] = []
+    comments: list[ProjectComment] = []
     created_at: datetime
+
+    @field_validator('filament_estimates', 'plate_data', 'comments', mode='before')
+    @classmethod
+    def parse_json_fields(cls, v: object) -> list:
+        return _parse_json_field(v)
 
 
 # ── Print jobs ────────────────────────────────────────────────────────────────

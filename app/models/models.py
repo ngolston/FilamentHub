@@ -377,6 +377,16 @@ class Project(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(300), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    client_requestor: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    design_link: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    is_priority: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    designer: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    estimated_print_time_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    filament_estimates: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON array
+    plate_data: Mapped[str | None] = mapped_column(Text, nullable=True)          # JSON array
+    comments: Mapped[str | None] = mapped_column(Text, nullable=True)            # JSON array
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now_utc)
 
     print_jobs: Mapped[list["PrintJob"]] = relationship(back_populates="project")

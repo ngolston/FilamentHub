@@ -363,14 +363,77 @@ export interface AmsUnit {
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
 
+export interface FilamentEstimateItem {
+  color_name: string | null
+  color_hex: string | null
+  material: string | null
+  amount_g: number | null
+}
+
+export interface PlateFilament {
+  type: string
+  color: string
+  used_g: number
+}
+
+export interface PlateDatum {
+  index: number
+  prediction_seconds: number
+  weight_g: number
+  objects: string[]
+  filaments: PlateFilament[]
+  status: string | null
+  printer_id: number | null
+  notes: string | null
+}
+
+export interface ProjectComment {
+  id: string
+  text: string
+  created_at: string
+}
+
 export interface ProjectResponse {
   id: number
   name: string
+  description: string | null
+  status: string | null
+  client_requestor: string | null
+  design_link: string | null
+  is_priority: boolean
+  designer: string | null
+  estimated_print_time_seconds: number | null
+  filament_estimates: FilamentEstimateItem[]
+  plate_data: PlateDatum[]
+  comments: ProjectComment[]
   created_at: string
 }
 
 export interface ProjectCreate {
   name: string
+  description?: string | null
+  status?: string | null
+  client_requestor?: string | null
+  design_link?: string | null
+  is_priority?: boolean
+  designer?: string | null
+  estimated_print_time_seconds?: number | null
+  filament_estimates?: FilamentEstimateItem[] | null
+  plate_data?: PlateDatum[] | null
+}
+
+export interface ProjectUpdate {
+  name?: string | null
+  description?: string | null
+  status?: string | null
+  client_requestor?: string | null
+  design_link?: string | null
+  is_priority?: boolean | null
+  designer?: string | null
+  estimated_print_time_seconds?: number | null
+  filament_estimates?: FilamentEstimateItem[] | null
+  plate_data?: PlateDatum[] | null
+  comments?: ProjectComment[] | null
 }
 
 // ─── Print Jobs ───────────────────────────────────────────────────────────────

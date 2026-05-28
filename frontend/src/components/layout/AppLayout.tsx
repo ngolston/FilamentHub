@@ -11,7 +11,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/':            'Dashboard',
   '/spools':      'My Spools',
   '/printers':    'Devices',
-  '/print-jobs':  'Print Jobs',
+  '/print-jobs':  'My Projects',
   '/filaments':   'Filament Profiles',
   '/community':   'Community Filament Database',
   '/qr-labels':   'QR Labels',

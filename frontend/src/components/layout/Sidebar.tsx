@@ -33,7 +33,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/spools',       label: 'My Spools',   icon: Package },
   { to: '/locations',    label: 'Locations',   icon: MapPin },
   { to: '/printers',     label: 'Printers',    icon: Printer },
-  { to: '/print-jobs',   label: 'Print Jobs',        icon: ClipboardList },
+  { to: '/print-jobs',   label: 'My Projects',       icon: ClipboardList },
   { to: '/filaments',    label: 'Filament Profiles', icon: Database },
   { to: '/analytics',       label: 'Analytics',            icon: BarChart3  },
   { to: '/cost-estimator',  label: 'Print Cost Estimator', icon: Calculator },
