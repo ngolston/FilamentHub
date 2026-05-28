@@ -1,7 +1,9 @@
 import { useState } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { usersApi } from '@/api/users'
+import { systemApi } from '@/api/system'
 import { getErrorMessage } from '@/api/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -143,21 +145,124 @@ function DangerRow({ action }: { action: DangerAction }) {
   )
 }
 
-export function DangerZoneSection() {
+// ── Start Fresh ───────────────────────────────────────────────────────────────
+
+const CONFIRM_PHRASE = 'START FRESH'
+
+function StartFreshCard() {
+  const logout   = useAuthStore((s) => s.logout)
+  const navigate = useNavigate()
+  const [open,    setOpen]    = useState(false)
+  const [phrase,  setPhrase]  = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState<string | null>(null)
+
+  const canConfirm = phrase === CONFIRM_PHRASE && password.length >= 8
+
+  function cancel() {
+    setOpen(false)
+    setPhrase('')
+    setPassword('')
+    setError(null)
+  }
+
+  async function execute() {
+    setLoading(true)
+    setError(null)
+    try {
+      await systemApi.factoryReset(password)
+      // Wipe all local state and send to registration
+      Object.keys(localStorage)
+        .filter((k) => k.startsWith('fh_'))
+        .forEach((k) => localStorage.removeItem(k))
+      logout()
+      navigate('/register')
+    } catch (err) {
+      setError(getErrorMessage(err))
+      setLoading(false)
+    }
+  }
+
   return (
-    <SettingsCard title="Danger zone" description="">
-      <div className="flex items-start gap-3 rounded-lg border border-red-700/40 bg-red-900/10 px-4 py-3 mb-2">
-        <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+    <SettingsCard title="Start fresh" description="">
+      <div className="flex items-start gap-3 rounded-lg border border-red-700/40 bg-red-900/10 px-4 py-3">
+        <RefreshCw className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
         <p className="text-sm text-red-300">
-          Actions in this section are irreversible. Proceed with caution.
+          Deletes <strong>all users, all inventory, all history, and all settings</strong> — every
+          piece of data — and resets this instance to a brand-new state. The next person to visit
+          will be prompted to create the first admin account. This <strong>cannot be undone</strong>.
         </p>
       </div>
 
-      <div className="divide-y divide-surface-border">
-        {ACTIONS.map((a) => (
-          <DangerRow key={a.id} action={a} />
-        ))}
-      </div>
+      {!open ? (
+        <div className="flex justify-end">
+          <Button variant="danger" onClick={() => setOpen(true)}>
+            Start fresh
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-4 pt-1">
+          <div className="space-y-1.5">
+            <p className="text-xs text-gray-400">
+              Type <span className="font-mono font-semibold text-red-300">{CONFIRM_PHRASE}</span> to confirm
+            </p>
+            <Input
+              placeholder={CONFIRM_PHRASE}
+              value={phrase}
+              onChange={(e) => setPhrase(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <p className="text-xs text-gray-400">Enter your admin password</p>
+            <Input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+          </div>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={cancel}>Cancel</Button>
+            <Button
+              variant="danger"
+              disabled={!canConfirm}
+              loading={loading}
+              onClick={execute}
+            >
+              Wipe everything &amp; start fresh
+            </Button>
+          </div>
+        </div>
+      )}
     </SettingsCard>
+  )
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+
+export function DangerZoneSection() {
+  return (
+    <div className="space-y-6">
+      <SettingsCard title="Danger zone" description="">
+        <div className="flex items-start gap-3 rounded-lg border border-red-700/40 bg-red-900/10 px-4 py-3 mb-2">
+          <AlertTriangle className="h-4 w-4 text-red-400 mt-0.5 shrink-0" />
+          <p className="text-sm text-red-300">
+            Actions in this section are irreversible. Proceed with caution.
+          </p>
+        </div>
+
+        <div className="divide-y divide-surface-border">
+          {ACTIONS.map((a) => (
+            <DangerRow key={a.id} action={a} />
+          ))}
+        </div>
+      </SettingsCard>
+
+      <StartFreshCard />
+    </div>
   )
 }

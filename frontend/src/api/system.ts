@@ -42,4 +42,7 @@ export const systemApi = {
 
   testSmtp: () =>
     api.post<{ ok: boolean; sent_to: string }>('/system/smtp/test').then((r) => r.data),
+
+  factoryReset: (password: string) =>
+    api.post<{ ok: boolean }>('/system/factory-reset', { password }).then((r) => r.data),
 }

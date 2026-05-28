@@ -4,12 +4,18 @@ import smtplib
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import get_current_user, require_admin
+from app.core.security import verify_password
 from app.db.session import get_db
-from app.models.models import SystemConfig, User
+from app.models.models import (
+    AlertFired, AlertRule, AmsSlot, AmsUnit, ApiKey, Brand,
+    DryingSession, FilamentProfile, PasswordResetToken, PrintJob,
+    PrintJobPhoto, PrintJobSpool, Printer, Project, RefreshToken,
+    Spool, StorageLocation, SystemConfig, User, Webhook, WeightLog,
+)
 
 router = APIRouter(prefix="/system", tags=["system"])
 
@@ -165,3 +171,42 @@ async def update_public_config(
     cfg.allow_registration = body.allow_registration
     await db.flush()
     return PublicConfig(allow_registration=cfg.allow_registration)
+
+
+# ── Factory reset ─────────────────────────────────────────────────────────────
+
+class FactoryResetIn(BaseModel):
+    password: str
+
+
+@router.post("/factory-reset", status_code=200)
+async def factory_reset(
+    body: FactoryResetIn,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Wipe every row in every table and return the instance to a fresh-install
+    state (no users, no inventory, registration re-opened). Admin only.
+
+    The caller's password is required as a final confirmation. After this call
+    returns, all sessions — including the caller's — are invalid.
+    """
+    if not verify_password(body.password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="Incorrect password")
+
+    # Delete in leaf-to-root dependency order so FK constraints are never violated.
+    for model in (
+        AlertFired, AmsSlot, WeightLog, DryingSession,
+        PrintJobPhoto, PrintJobSpool, PrintJob, Project,
+        AlertRule, Webhook, AmsUnit, StorageLocation,
+        Spool, Printer, ApiKey, RefreshToken, PasswordResetToken,
+        FilamentProfile, Brand, User,
+    ):
+        await db.execute(delete(model))
+
+    # Reset SystemConfig: wipe then recreate with safe defaults.
+    await db.execute(delete(SystemConfig))
+    db.add(SystemConfig(id=1, allow_registration=True))
+
+    await db.flush()
+    return {"ok": True}
