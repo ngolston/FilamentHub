@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import {
   ExternalLink, Thermometer, Weight, MapPin, Palette,
   Package, Tag, Scale, Hash, DollarSign, Calendar,
-  Gauge, Droplets, Link2, Wind,
+  Gauge, Link2, Wind,
 } from 'lucide-react'
 import { publicApi } from '@/api/public'
 
