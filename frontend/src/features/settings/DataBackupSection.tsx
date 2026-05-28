@@ -1,15 +1,13 @@
 import { useRef, useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Download, Upload, FileText, FileJson, File,
-  Database, CheckCircle2,
+  Database, CheckCircle2, Server, Clock,
 } from 'lucide-react'
 import { dataApi } from '@/api/data'
 import type { ImportResult } from '@/types/api'
 import { spoolsApi } from '@/api/spools'
 import { useAuthStore } from '@/stores/auth'
-import { useLocalSetting } from '@/hooks/useLocalSetting'
-import { Toggle } from '@/components/ui/Toggle'
 import { Button } from '@/components/ui/Button'
 import { getErrorMessage } from '@/api/client'
 import { exportInventoryPdf } from '@/utils/exportPdf'
@@ -30,13 +28,10 @@ export function DataBackupSection() {
   const csvRef      = useRef<HTMLInputElement>(null)
   const spoolmanRef = useRef<HTMLInputElement>(null)
   const user        = useAuthStore((s) => s.user)
+  const queryClient = useQueryClient()
 
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
   const [pdfError,     setPdfError]     = useState<string | null>(null)
-
-  const [autoBackup,  setAutoBackup]  = useLocalSetting('fh_auto_backup',  false)
-  const [backupFreq,  setBackupFreq]  = useLocalSetting('fh_backup_freq',  'weekly')
-  const [backupDest,  setBackupDest]  = useLocalSetting('fh_backup_dest',  'browser')
 
   // Export mutations
   const csvMutation = useMutation({
@@ -57,6 +52,16 @@ export function DataBackupSection() {
       exportInventoryPdf(result.items, user?.display_name ?? user?.email)
     },
     onError: (err) => setPdfError(getErrorMessage(err)),
+  })
+
+  const serverBackupMutation = useMutation({
+    mutationFn: dataApi.createServerBackup,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['serverBackups'] }),
+  })
+
+  const { data: serverBackups } = useQuery({
+    queryKey: ['serverBackups'],
+    queryFn: dataApi.listServerBackups,
   })
 
   // Import mutations
@@ -175,44 +180,88 @@ export function DataBackupSection() {
       </SettingsCard>
 
       {/* Auto-backup */}
-      <SettingsCard title="Auto-backup" description="Automatically export and save your inventory on a schedule.">
-        <div className="flex items-center justify-between mb-4">
+      <SettingsCard
+        title="Auto-backup"
+        description="Full backups run automatically on the server every day at 12:01am."
+      >
+        {/* Schedule info */}
+        <div className="flex items-start gap-3 rounded-lg border border-surface-border bg-surface-3 px-4 py-3 mb-4">
+          <Clock className="h-4 w-4 text-primary-400 mt-0.5 shrink-0" />
           <div>
-            <p className="text-sm font-medium text-white">Enable auto-backup</p>
-            <p className="text-xs text-gray-500 mt-0.5">Runs in the background based on the schedule below.</p>
+            <p className="text-sm font-medium text-white">Daily at 12:01am (server time)</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Each backup is a ZIP archive containing the full database and all uploaded photos.
+              Saved to <span className="font-mono text-gray-300">data/backups/</span> on the server.
+              To restore: stop the app, extract the ZIP into your data directory, restart.
+            </p>
           </div>
-          <Toggle checked={autoBackup} onChange={setAutoBackup} />
         </div>
 
-        {autoBackup && (
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-gray-300">Frequency</label>
-              <select
-                value={backupFreq}
-                onChange={(e) => setBackupFreq(e.target.value)}
-                className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none"
-              >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-sm font-medium text-gray-300">Destination</label>
-              <select
-                value={backupDest}
-                onChange={(e) => setBackupDest(e.target.value)}
-                className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none"
-              >
-                <option value="browser">Browser download</option>
-                <option value="google_drive" disabled>Google Drive (coming soon)</option>
-                <option value="dropbox"      disabled>Dropbox (coming soon)</option>
-              </select>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => serverBackupMutation.mutate()}
+            loading={serverBackupMutation.isPending}
+          >
+            <Server className="h-3.5 w-3.5" /> Back up now
+          </Button>
+          {serverBackupMutation.isSuccess && (
+            <p className="text-xs text-green-400">Backup saved successfully</p>
+          )}
+          {serverBackupMutation.error && (
+            <p className="text-xs text-red-400">{getErrorMessage(serverBackupMutation.error)}</p>
+          )}
+        </div>
+
+        {/* Saved server backups */}
+        {serverBackups && serverBackups.length > 0 && (
+          <div className="mt-4">
+            <p className="text-xs font-medium text-gray-400 mb-2">Saved backups ({serverBackups.length})</p>
+            <div className="space-y-1 max-h-48 overflow-y-auto">
+              {serverBackups.map((b) => (
+                <BackupRow key={b.filename} backup={b} />
+              ))}
             </div>
           </div>
         )}
+
+        {serverBackups?.length === 0 && (
+          <p className="mt-3 text-xs text-gray-500">No backups yet — the first one runs tonight at 12:01am, or click "Back up now".</p>
+        )}
       </SettingsCard>
+    </div>
+  )
+}
+
+function BackupRow({ backup }: { backup: import('@/api/data').ServerBackupEntry }) {
+  const [loading, setLoading] = useState(false)
+
+  const handleDownload = async () => {
+    setLoading(true)
+    try {
+      const blob = await dataApi.downloadServerBackup(backup.filename)
+      downloadBlob(blob, backup.filename)  // .zip file
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-surface-3 px-3 py-2">
+      <div>
+        <p className="text-xs text-white font-mono">{backup.filename}</p>
+        <p className="text-[10px] text-gray-500">
+          {new Date(backup.created_at).toLocaleString()} · {(backup.size_bytes / 1024).toFixed(1)} KB
+        </p>
+      </div>
+      <button
+        onClick={handleDownload}
+        disabled={loading}
+        className="ml-3 text-gray-400 hover:text-white disabled:opacity-50"
+      >
+        <Download className="h-3.5 w-3.5" />
+      </button>
     </div>
   )
 }

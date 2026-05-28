@@ -15,6 +15,7 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.models import Brand, FilamentProfile, Spool
 
@@ -228,6 +229,11 @@ async def export_spools_csv(owner_id: str, db: AsyncSession) -> str:
     result = await db.execute(
         select(Spool)
         .where(Spool.owner_id == owner_id)
+        .options(
+            selectinload(Spool.filament),
+            selectinload(Spool.brand),
+            selectinload(Spool.location),
+        )
     )
     spools = result.scalars().all()
 
@@ -274,7 +280,14 @@ async def export_spools_csv(owner_id: str, db: AsyncSession) -> str:
 
 async def export_spoolman_json(owner_id: str, db: AsyncSession) -> list[dict[str, Any]]:
     """Export all spools as Spoolman-compatible JSON."""
-    result = await db.execute(select(Spool).where(Spool.owner_id == owner_id))
+    result = await db.execute(
+        select(Spool)
+        .where(Spool.owner_id == owner_id)
+        .options(
+            selectinload(Spool.filament),
+            selectinload(Spool.brand),
+        )
+    )
     spools = result.scalars().all()
     out = []
     for s in spools:

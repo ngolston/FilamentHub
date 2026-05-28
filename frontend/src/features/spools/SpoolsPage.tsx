@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Search, Plus, Package, LayoutGrid, List, X,
@@ -347,16 +347,40 @@ function SpoolDetailModal({ spool, onClose, onEdit }: {
           )}
 
           {/* QR code */}
-          <div className="flex items-center gap-4 rounded-xl border border-surface-border p-3">
-            <div className="rounded-lg bg-white p-2 shrink-0">
-              <QRCodeSVG value={`filamenthub://spool/${spool.id}`} size={64} bgColor="#ffffff" fgColor="#0f1117" level="M" />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-white">Spool #{spool.id}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Scan to look up this spool</p>
-              {spool.registered && <p className="text-xs text-gray-600 mt-0.5">Added {formatRelative(spool.registered)}</p>}
-            </div>
-          </div>
+          {(() => {
+            const spoolUrl = `${window.location.origin}/s/${spool.id}`
+            const locUrl   = spool.location ? `${window.location.origin}/l/${spool.location.id}` : null
+            return (
+              <div className="rounded-xl border border-surface-border p-3 space-y-3">
+                <div className="flex items-center gap-4">
+                  <div className="rounded-lg bg-white p-2 shrink-0">
+                    <QRCodeSVG value={spoolUrl} size={64} bgColor="#ffffff" fgColor="#0f1117" level="M" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-white">Spool #{spool.id}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Scan to view this spool</p>
+                    <p className="text-[10px] text-gray-600 font-mono mt-1 truncate">{spoolUrl}</p>
+                    {spool.registered && <p className="text-xs text-gray-600 mt-0.5">Added {formatRelative(spool.registered)}</p>}
+                  </div>
+                </div>
+                {locUrl && (
+                  <div className="flex items-center gap-4 pt-2 border-t border-surface-border">
+                    <div className="rounded-lg bg-white p-2 shrink-0">
+                      <QRCodeSVG value={locUrl} size={64} bgColor="#ffffff" fgColor="#0f1117" level="M" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-white flex items-center gap-1">
+                        <MapPin className="h-3 w-3 text-gray-400 shrink-0" />
+                        {spool.location!.name}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">Scan to view all spools here</p>
+                      <p className="text-[10px] text-gray-600 font-mono mt-1 truncate">{locUrl}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* Footer */}
           <div className="flex justify-end gap-2 pt-2 border-t border-surface-border">
@@ -706,13 +730,14 @@ export default function SpoolsPage() {
   const colPickerRef = useRef<HTMLDivElement>(null)
 
   // ── Filters ────────────────────────────────────────────────────────────────
+  const [searchParams] = useSearchParams()
   const [search,        setSearch]        = useState(() => getInitialActiveView().filters.search)
   const [material,      setMaterial]      = useState(() => getInitialActiveView().filters.material)
   const [brandFilter,   setBrandFilter]   = useState(() => getInitialActiveView().filters.brandFilter)
   const [statusFlt,     setStatusFlt]     = useState(() => getInitialActiveView().filters.statusFlt)
   const [colorFlt,      setColorFlt]      = useState(() => getInitialActiveView().filters.colorFlt)
   const [basicColorFlt, setBasicColorFlt] = useState(() => getInitialActiveView().filters.basicColorFlt)
-  const [locationFlt,   setLocationFlt]   = useState(() => getInitialActiveView().filters.locationFlt)
+  const [locationFlt,   setLocationFlt]   = useState(() => searchParams.get('location') ?? getInitialActiveView().filters.locationFlt)
   const [printerFlt,    setPrinterFlt]    = useState(() => getInitialActiveView().filters.printerFlt)
 
   // ── View / sort ─────────────────────────────────────────────────────────────

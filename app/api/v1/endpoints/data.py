@@ -1,12 +1,15 @@
 """Data import and export endpoints."""
 
 import json
+from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.deps import get_current_user, require_editor
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.models.models import User
 from app.services.import_export import (
@@ -84,3 +87,61 @@ async def export_json(
         media_type="application/json",
         headers={"Content-Disposition": "attachment; filename=filamenthub_export.json"},
     )
+
+
+@router.post("/backup")
+async def create_server_backup(
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger an immediate full backup to DATA_DIR/backups/ on the server."""
+    import asyncio
+    from app.services.backup import run_full_backup
+    try:
+        filename = await asyncio.to_thread(run_full_backup)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Backup failed: {exc}") from exc
+
+    settings = get_settings()
+    zip_path: Path = settings.data_path / "backups" / filename
+    return {
+        "filename": filename,
+        "size_bytes": zip_path.stat().st_size,
+    }
+
+
+@router.get("/backups")
+async def list_server_backups(
+    current_user: User = Depends(get_current_user),
+):
+    """List full backups stored in DATA_DIR/backups/."""
+    settings = get_settings()
+    backup_dir: Path = settings.data_path / "backups"
+    if not backup_dir.exists():
+        return {"backups": []}
+
+    backups = [
+        {
+            "filename": f.name,
+            "size_bytes": f.stat().st_size,
+            "created_at": datetime.fromtimestamp(f.stat().st_mtime).isoformat(),
+        }
+        for f in sorted(backup_dir.glob("filamenthub_backup_*.zip"), reverse=True)
+    ]
+    return {"backups": backups}
+
+
+@router.get("/backups/{filename}")
+async def download_server_backup(
+    filename: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Download a specific backup archive."""
+    if "/" in filename or "\\" in filename or not filename.endswith(".zip"):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+
+    settings = get_settings()
+    path: Path = settings.data_path / "backups" / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Backup not found")
+
+    return FileResponse(path, media_type="application/zip", filename=filename)

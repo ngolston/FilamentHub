@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useQuery } from '@tanstack/react-query'
@@ -20,6 +20,7 @@ type FormData = z.infer<typeof schema>
 export default function LoginPage() {
   const { login, isLoading } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [serverError, setServerError] = useState<string | null>(null)
 
   const { data: publicConfig } = useQuery({
@@ -37,7 +38,8 @@ export default function LoginPage() {
     setServerError(null)
     try {
       await login(data)
-      navigate('/', { replace: true })
+      const redirect = searchParams.get('redirect')
+      navigate(redirect ?? '/', { replace: true })
     } catch (err) {
       setServerError(getErrorMessage(err))
     }

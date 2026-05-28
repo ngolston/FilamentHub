@@ -185,8 +185,8 @@ function printLabels(areaId: string, cols: number, mmW: number, mmH: number) {
 }
 
 function printLocationLabels(areaId: string) {
-  const mmW = 60
-  const mmH = 40
+  const mmW = 40
+  const mmH = 30
 
   const style = document.createElement('style')
   style.id    = '__qr_print_loc__'
@@ -196,8 +196,8 @@ function printLocationLabels(areaId: string) {
       body > * { display: none !important; }
       #${areaId} {
         display: grid !important;
-        grid-template-columns: repeat(3, ${mmW}mm);
-        gap: 4mm;
+        grid-template-columns: repeat(4, ${mmW}mm);
+        gap: 3mm;
         width: fit-content;
       }
       #${areaId} > * {
@@ -252,36 +252,141 @@ function SpoolPickerRow({
   )
 }
 
-// ── Location QR card ─────────────────────────────────────────────────────────
+// ── Location badge label — 40 × 30 mm, black & white ─────────────────────────
+// W=151px H=113px at 96 dpi
 
-function LocationQrCard({ location }: { location: LocationResponse }) {
+const LOC_W = 151
+const LOC_H = 113
+const LOC_QR = 56
+
+function LocationBadgeLabel({ location, forScreen = false }: { location: LocationResponse; forScreen?: boolean }) {
   const url = `${window.location.origin}/l/${location.id}`
+
   return (
-    <div className="rounded-xl bg-white border border-gray-200 shadow-sm p-3 flex flex-col items-center gap-2">
-      <QRCodeSVG value={url} size={80} level="M" />
-      <div className="text-center">
-        <p className="text-[11px] font-bold text-gray-900 leading-tight">{location.name}</p>
-        {location.is_dry_box && (
-          <p className="text-[9px] text-blue-600 leading-none mt-0.5">Dry Box</p>
-        )}
-        <p className="text-[8px] text-gray-400 tabular-nums mt-0.5">{location.spool_count} spool{location.spool_count !== 1 ? 's' : ''}</p>
+    <div style={{
+      width: LOC_W, height: LOC_H,
+      background: '#fff',
+      fontFamily: "'Helvetica Neue', Helvetica, Arial, sans-serif",
+      overflow: 'hidden',
+      display: 'flex',
+      flexDirection: 'column',
+      boxSizing: 'border-box',
+      border: '1px solid #000',
+      ...(forScreen ? { borderRadius: 6, boxShadow: '0 2px 10px rgba(0,0,0,0.20)' } : {}),
+    }}>
+
+      {/* ── Header bar ── */}
+      <div style={{
+        height: 19, background: '#000', flexShrink: 0,
+        display: 'flex', alignItems: 'center',
+        padding: '0 7px', gap: 4, boxSizing: 'border-box',
+      }}>
+        {/* Map-pin icon */}
+        <svg width="9" height="9" viewBox="0 0 24 24" fill="none"
+          stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
+          <circle cx="12" cy="10" r="3"/>
+        </svg>
+        <span style={{
+          color: '#fff', fontSize: 6.5, fontWeight: 700,
+          letterSpacing: '0.14em', textTransform: 'uppercase', flex: 1,
+        }}>
+          Storage Location
+        </span>
+        <span style={{ color: 'rgba(255,255,255,0.32)', fontSize: 6, letterSpacing: '0.06em', fontWeight: 600 }}>
+          FH
+        </span>
       </div>
-    </div>
-  )
-}
 
-// ── Print-only location card (portal target) ──────────────────────────────────
+      {/* ── Body ── */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
 
-function LocationQrPrintCard({ location }: { location: LocationResponse }) {
-  const url = `${window.location.origin}/l/${location.id}`
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', background: 'white', padding: '6px' }}>
-      <QRCodeSVG value={url} size={80} level="M" />
-      <p style={{ fontSize: '9px', fontWeight: 700, color: '#111', textAlign: 'center', margin: 0 }}>{location.name}</p>
-      {location.is_dry_box && (
-        <p style={{ fontSize: '7px', color: '#2563eb', margin: 0 }}>Dry Box</p>
-      )}
-      <p style={{ fontSize: '7px', color: '#9ca3af', margin: 0 }}>{location.spool_count} spool{location.spool_count !== 1 ? 's' : ''}</p>
+        {/* Info column */}
+        <div style={{
+          flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center',
+          padding: '5px 6px 5px 7px', gap: 4,
+          overflow: 'hidden', boxSizing: 'border-box',
+        }}>
+          {/* Location name */}
+          <div style={{
+            fontSize: 13, fontWeight: 900, color: '#000',
+            lineHeight: 1.1, letterSpacing: '-0.01em',
+            display: '-webkit-box', overflow: 'hidden',
+            WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          } as React.CSSProperties}>
+            {location.name}
+          </div>
+
+          {/* Divider */}
+          <div style={{ height: 1, background: '#d1d5db' }} />
+
+          {/* Spool count */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            <div style={{ width: 4, height: 4, borderRadius: 1, background: '#000', flexShrink: 0 }} />
+            <span style={{ fontSize: 7.5, color: '#374151', fontWeight: 500 }}>
+              {location.spool_count} spool{location.spool_count !== 1 ? 's' : ''}
+            </span>
+          </div>
+
+          {/* DRY BOX badge */}
+          {location.is_dry_box && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 2,
+              border: '1px solid #000', borderRadius: 2,
+              padding: '1.5px 3px',
+              fontSize: 6, fontWeight: 800,
+              letterSpacing: '0.1em', textTransform: 'uppercase',
+              color: '#000', width: 'fit-content',
+            }}>
+              <svg width="6" height="6" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6l9-4 9 4v12l-9 4-9-4V6z"/>
+                <path d="M3 6l9 4 9-4"/>
+                <path d="M12 22V10"/>
+              </svg>
+              Dry Box
+            </div>
+          )}
+
+          {/* Description */}
+          {location.description && (
+            <div style={{
+              fontSize: 6.5, color: '#6b7280',
+              overflow: 'hidden', textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap', lineHeight: 1.3,
+            }}>
+              {location.description}
+            </div>
+          )}
+        </div>
+
+        {/* Vertical divider */}
+        <div style={{ width: 1, background: '#e5e7eb', flexShrink: 0 }} />
+
+        {/* QR column */}
+        <div style={{
+          width: 66, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: 5, flexShrink: 0, boxSizing: 'border-box',
+        }}>
+          <QRCodeSVG value={url} size={LOC_QR} level="M" bgColor="#ffffff" fgColor="#000000" />
+        </div>
+      </div>
+
+      {/* ── Footer bar ── */}
+      <div style={{
+        height: 13, background: '#111', flexShrink: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+      }}>
+        <div style={{ height: 1, background: 'rgba(255,255,255,0.15)', flex: 1, marginLeft: 8 }} />
+        <span style={{
+          color: 'rgba(255,255,255,0.60)', fontSize: 6.5,
+          fontFamily: 'monospace', letterSpacing: '0.12em', fontWeight: 600,
+          whiteSpace: 'nowrap',
+        }}>
+          LOC-{location.id}
+        </span>
+        <div style={{ height: 1, background: 'rgba(255,255,255,0.15)', flex: 1, marginRight: 8 }} />
+      </div>
     </div>
   )
 }
@@ -721,9 +826,9 @@ export default function QrLabelsPage() {
                   <p className="text-sm">Select locations on the left to preview QR codes</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-3 gap-4 items-start">
+                <div className="flex flex-wrap gap-4 items-start">
                   {selectedLocations.map((loc) => (
-                    <LocationQrCard key={loc.id} location={loc} />
+                    <LocationBadgeLabel key={loc.id} location={loc} forScreen />
                   ))}
                 </div>
               )}
@@ -751,7 +856,7 @@ export default function QrLabelsPage() {
       {selectedLocations.length > 0 && createPortal(
         <div id={LOC_PRINT_AREA_ID} style={{ display: 'none' }}>
           {selectedLocations.map((loc) => (
-            <LocationQrPrintCard key={loc.id} location={loc} />
+            <LocationBadgeLabel key={loc.id} location={loc} />
           ))}
         </div>,
         document.body,

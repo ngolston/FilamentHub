@@ -9,6 +9,12 @@ function uploadFile<T>(endpoint: string, file: File) {
     .then((r) => r.data)
 }
 
+export interface ServerBackupEntry {
+  filename: string
+  size_bytes: number
+  created_at: string
+}
+
 export const dataApi = {
   importSpoolman: (file: File) =>
     uploadFile<ImportResult>('/data/import/spoolman', file),
@@ -21,4 +27,15 @@ export const dataApi = {
 
   exportJson: () =>
     api.get('/data/export/json', { responseType: 'blob' }).then((r) => r.data as Blob),
+
+  createServerBackup: () =>
+    api.post<{ filename: string; size_bytes: number }>('/data/backup').then((r) => r.data),
+
+  listServerBackups: () =>
+    api.get<{ backups: ServerBackupEntry[] }>('/data/backups').then((r) => r.data.backups),
+
+  downloadServerBackup: (filename: string) =>
+    api
+      .get(`/data/backups/${encodeURIComponent(filename)}`, { responseType: 'blob' })
+      .then((r) => r.data as Blob),
 }

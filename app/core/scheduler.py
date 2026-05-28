@@ -1,4 +1,4 @@
-"""Background scheduler — periodically checks alert rules and fires notifications.
+"""Background scheduler — alert checks and nightly backups.
 
 Uses APScheduler's AsyncIOScheduler so all DB I/O stays on the event loop.
 The scheduler is started during FastAPI lifespan startup and stopped on shutdown.
@@ -183,6 +183,18 @@ async def _check_alerts() -> None:
         await db.commit()
 
 
+# ── Backup job ────────────────────────────────────────────────────────────────
+
+def _run_backup_job() -> None:
+    """Scheduler job — creates a full backup ZIP at 12:01am server time."""
+    from app.services.backup import run_full_backup
+    try:
+        filename = run_full_backup()
+        logger.info("Scheduled backup complete: %s", filename)
+    except Exception:
+        logger.exception("Scheduled backup failed")
+
+
 # ── Factory ───────────────────────────────────────────────────────────────────
 
 def create_scheduler() -> AsyncIOScheduler:
@@ -194,6 +206,17 @@ def create_scheduler() -> AsyncIOScheduler:
         minutes=30,
         id="alert_check",
         name="Check filament alert rules",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        _run_backup_job,
+        trigger="cron",
+        hour=0,
+        minute=1,
+        id="daily_backup",
+        name="Daily full backup at 12:01am",
         replace_existing=True,
         max_instances=1,
         coalesce=True,

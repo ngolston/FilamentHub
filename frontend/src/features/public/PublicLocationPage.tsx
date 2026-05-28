@@ -130,11 +130,11 @@ export default function PublicLocationPage() {
 
         {/* Edit button */}
         <button
-          onClick={() => navigate(`/login?redirect=${encodeURIComponent('/locations')}`)}
+          onClick={() => navigate(`/login?redirect=${encodeURIComponent(`/spools?location=${locationId}`)}`)}
           className="mt-6 w-full flex items-center justify-center gap-2 rounded-xl border border-indigo-500/40 bg-indigo-600/10 px-4 py-3 text-sm font-medium text-indigo-300 hover:bg-indigo-600/20 transition-colors"
         >
           <ExternalLink className="h-4 w-4" />
-          Manage in FilamentHub (login required)
+          Edit spools in FilamentHub (login required)
         </button>
 
         <p className="text-center text-xs text-gray-600 mt-4 pb-4">
