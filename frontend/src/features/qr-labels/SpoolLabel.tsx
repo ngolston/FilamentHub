@@ -25,6 +25,20 @@ export interface ClassicSlot {
   enabled: boolean
 }
 
+export interface LabelAdjustments {
+  qrScale:     number  // 0.5 – 1.5 multiplier on base QR size
+  qrOffsetX:   number  // css px nudge
+  qrOffsetY:   number  // css px nudge
+  textScale:   number  // 0.7 – 1.3 multiplier on field font sizes
+  textOffsetX: number  // css px nudge for fields area
+  textOffsetY: number  // css px nudge for fields area
+}
+
+export const DEFAULT_LABEL_ADJUSTMENTS: LabelAdjustments = {
+  qrScale: 1, qrOffsetX: 0, qrOffsetY: 0,
+  textScale: 1, textOffsetX: 0, textOffsetY: 0,
+}
+
 export const CLASSIC_FIELD_OPTIONS: { value: ClassicFieldOption; label: string }[] = [
   { value: 'nozzle',   label: 'Nozzle Temp' },
   { value: 'bed',      label: 'Bed Temp' },

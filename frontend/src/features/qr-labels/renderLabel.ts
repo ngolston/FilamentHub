@@ -9,7 +9,8 @@
 
 import type { SpoolResponse, LocationResponse } from '@/types/api'
 import type { LabelTemplate, ClassicSlot, QrEncoding } from './SpoolLabel'
-import { LABEL_PX, CLASSIC_FIELD_LABELS } from './SpoolLabel'
+import { LABEL_PX, CLASSIC_FIELD_LABELS, DEFAULT_LABEL_ADJUSTMENTS } from './SpoolLabel'
+import type { LabelAdjustments } from './SpoolLabel'
 
 const SCALE = 4   // 4× CSS pixels → ~380 dpi on a 40 × 30 mm label
 
@@ -124,15 +125,22 @@ async function loadFonts() {
 
 // ── QR code helper ────────────────────────────────────────────────────────────
 
+const qrCache = new Map<string, HTMLCanvasElement>()
+
 async function makeQR(value: string, cssPx: number): Promise<HTMLCanvasElement> {
+  const key = `${value}|${cssPx}`
+  const hit = qrCache.get(key)
+  if (hit) return hit
   const QRCode = (await import('qrcode')).default
   const c = document.createElement('canvas')
   await QRCode.toCanvas(c, value, {
-    width: cssPx * SCALE,   // physical pixels → 1-to-1 draw, no upscaling
+    width: cssPx * SCALE,
     margin: 0,
     color: { dark: '#000000', light: '#ffffff' },
     errorCorrectionLevel: 'M',
   })
+  if (qrCache.size > 120) qrCache.clear()
+  qrCache.set(key, c)
   return c
 }
 
@@ -176,11 +184,11 @@ function drawSlotRows(
   ctx: CanvasRenderingContext2D,
   rows: ClassicSlot[], spool: SpoolResponse,
   cssX: number, cssY: number, cssW: number, cssH: number,
-  compact = false,
+  compact = false, scale = 1,
 ) {
   if (rows.length === 0) return
-  const labelFs = compact ? 6   : 6.5
-  const valFs   = compact ? 7.5 : 8
+  const labelFs = (compact ? 6   : 6.5) * scale
+  const valFs   = (compact ? 7.5 : 8)   * scale
   const labelF  = font(400, labelFs)
   const valF    = font(700, valFs)
   const rowH    = cssH / rows.length
@@ -228,7 +236,7 @@ function drawFillBar(
 async function drawClassicBadge(
   ctx: CanvasRenderingContext2D,
   spool: SpoolResponse, slots: ClassicSlot[], enc: QrEncoding,
-  w: number, h: number,
+  w: number, h: number, adj: LabelAdjustments,
 ) {
   const fp    = spool.filament
   const hex   = fp?.color_hex ?? spool.color_hex ?? null
@@ -260,23 +268,25 @@ async function drawClassicBadge(
   // Body starts below bar (pt-1 = 4px below bar)
   const bodyTop = barTop + barH + 4
 
-  // QR — right column (px-1.5 = 6px padding each side, pt-1 pb-1.5 vertical padding)
-  const qrSize  = 56
+  // QR — right column, centered on default anchor, then offset applied
+  const BASE_QR = 56
+  const adjQrSz = Math.max(10, Math.round(BASE_QR * adj.qrScale))
   const qrPadX  = 6
-  const qrColW  = qrSize + qrPadX * 2
-  const qrX     = w - qrColW + qrPadX
-  const bodyH   = h - bodyTop - 6   // pb-1.5 = 6
-  const qrY     = bodyTop + (bodyH - qrSize) / 2
-  const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
+  const qrColW  = BASE_QR + qrPadX * 2   // layout width never changes
+  const bodyH   = h - bodyTop - 6
+  const qrCX    = w - qrColW + qrPadX + BASE_QR / 2   // center of default QR column
+  const qrCY    = bodyTop + bodyH / 2
+  const qrImg   = await makeQR(qrValue(spool, enc), adjQrSz)
+  ctx.drawImage(qrImg, qrCX - adjQrSz / 2 + adj.qrOffsetX, qrCY - adjQrSz / 2 + adj.qrOffsetY, adjQrSz, adjQrSz)
 
-  // Left column — name (pt-1 top, font 9px) then slots
-  const textX   = 8
-  const textW   = w - qrColW - textX - 4
-  const F_name  = font(700, 9)
-  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, bodyTop, F_name, '#1f2937')
-  const slotsTop = bodyTop + 9 + 2
-  drawSlotRows(ctx, rows, spool, textX, slotsTop, textW, bodyH - (9 + 2), false)
+  // Left column — name then slots, with text adjustments
+  const textX  = 8 + adj.textOffsetX
+  const textW  = w - qrColW - 8 - 4
+  const F_name = font(700, 9 * adj.textScale)
+  const nameY  = bodyTop + adj.textOffsetY
+  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, nameY, F_name, '#1f2937')
+  const slotsTop = nameY + 9 * adj.textScale + 2
+  drawSlotRows(ctx, rows, spool, textX, slotsTop, textW, bodyH - (9 + 2), false, adj.textScale)
 }
 
 // ── 2. Wide Card (189×113 = 50×30mm) ─────────────────────────────────────────
@@ -285,7 +295,7 @@ async function drawClassicBadge(
 async function drawWideCard(
   ctx: CanvasRenderingContext2D,
   spool: SpoolResponse, slots: ClassicSlot[], enc: QrEncoding,
-  w: number, h: number,
+  w: number, h: number, adj: LabelAdjustments,
 ) {
   const fp      = spool.filament
   const hex     = fp?.color_hex ?? spool.color_hex ?? null
@@ -298,29 +308,31 @@ async function drawWideCard(
   // Color stripe (w-2 = 8px)
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 8, h)
 
-  // QR — right column (px-2 = 8px pad each side)
-  const qrSize = 61
-  const qrPadX = 8
-  const qrColW = qrSize + qrPadX * 2
-  const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, w - qrColW + qrPadX, (h - qrSize) / 2, qrSize, qrSize)
+  // QR — right column, centered on anchor, then offset
+  const BASE_QR = 61
+  const adjQrSz = Math.max(10, Math.round(BASE_QR * adj.qrScale))
+  const qrPadX  = 8
+  const qrColW  = BASE_QR + qrPadX * 2
+  const qrCX    = w - qrColW + qrPadX + BASE_QR / 2
+  const qrImg   = await makeQR(qrValue(spool, enc), adjQrSz)
+  ctx.drawImage(qrImg, qrCX - adjQrSz / 2 + adj.qrOffsetX, h / 2 - adjQrSz / 2 + adj.qrOffsetY, adjQrSz, adjQrSz)
 
-  // Left text column (px-2 py-1.5 → left=16 from edge, top=6)
-  const textX  = 16   // stripe(8) + px-2(8)
-  const textW  = w - 8 - qrColW - 8   // minus stripe, QR col, right pad of text col
-  let   y      = 6
+  // Left text column
+  const textX = 16 + adj.textOffsetX
+  const textW = w - 8 - qrColW - 8
+  let   y     = 6 + adj.textOffsetY
 
   if (brand) {
-    const F = font(400, 7)
+    const F = font(400, 7 * adj.textScale)
     fillTextSharp(ctx, truncCss(ctx, brand.toUpperCase(), textW, F), textX, y, F, '#9ca3af')
-    y += 7 + 4
+    y += 7 * adj.textScale + 4
   }
-  const F_name = font(700, 11)
+  const F_name = font(700, 11 * adj.textScale)
   fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, y, F_name, '#111827')
-  y += 11 + 4
+  y += 11 * adj.textScale + 4
 
   const dataH = h - y - (hasFill ? 16 : 6)
-  drawSlotRows(ctx, rows, spool, textX, y, textW, dataH, true)
+  drawSlotRows(ctx, rows, spool, textX, y, textW, Math.max(1, dataH), true, adj.textScale)
   if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, textX, h - 10, textW, 5)
 }
 
@@ -329,7 +341,7 @@ async function drawWideCard(
 async function drawSlimTag(
   ctx: CanvasRenderingContext2D,
   spool: SpoolResponse, slots: ClassicSlot[], enc: QrEncoding,
-  w: number, h: number,
+  w: number, h: number, adj: LabelAdjustments,
 ) {
   const fp      = spool.filament
   const hex     = fp?.color_hex ?? spool.color_hex ?? null
@@ -347,17 +359,20 @@ async function drawSlimTag(
   if (brand) fillTextSharp(ctx, truncCss(ctx, brand, (w / 2) - 6, F_hdr), 6, 1, F_hdr, 'rgba(255,255,255,0.9)')
   fillTextSharp(ctx, truncCss(ctx, mat, (w / 2) - 6, F_hdr), w - 4, 1, F_hdr, 'rgba(255,255,255,0.9)', 'top', 'right')
 
-  const qrSize = 50
-  const bodyY  = hdrH + 2
-  const bodyH  = h - bodyY - (hasFill ? 12 : 4)
-  const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, 4, bodyY + (bodyH - qrSize) / 2, qrSize, qrSize)
+  const BASE_QR = 50
+  const adjQrSz = Math.max(10, Math.round(BASE_QR * adj.qrScale))
+  const bodyY   = hdrH + 2
+  const bodyH   = h - bodyY - (hasFill ? 12 : 4)
+  const qrImg   = await makeQR(qrValue(spool, enc), adjQrSz)
+  // QR anchored to left side, centered vertically, then offset
+  ctx.drawImage(qrImg, 4 + (BASE_QR - adjQrSz) / 2 + adj.qrOffsetX, bodyY + (bodyH - adjQrSz) / 2 + adj.qrOffsetY, adjQrSz, adjQrSz)
 
-  const textX = 4 + qrSize + 4
-  const textW = w - textX - 4
-  const F_name = font(700, 10)
-  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, bodyY + 2, F_name, '#111827')
-  drawSlotRows(ctx, rows, spool, textX, bodyY + 14, textW, bodyH - 14, true)
+  const textX  = 4 + BASE_QR + 4 + adj.textOffsetX
+  const textW  = w - textX - 4
+  const nameY  = bodyY + 2 + adj.textOffsetY
+  const F_name = font(700, 10 * adj.textScale)
+  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, nameY, F_name, '#111827')
+  drawSlotRows(ctx, rows, spool, textX, nameY + 14 * adj.textScale, textW, bodyH - 14, true, adj.textScale)
   if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, 4, h - 10, w - 8, 4)
 }
 
@@ -366,7 +381,7 @@ async function drawSlimTag(
 async function drawMicroStrip(
   ctx: CanvasRenderingContext2D,
   spool: SpoolResponse, slots: ClassicSlot[], enc: QrEncoding,
-  w: number, h: number,
+  w: number, h: number, adj: LabelAdjustments,
 ) {
   const fp       = spool.filament
   const hex      = fp?.color_hex ?? spool.color_hex ?? null
@@ -377,19 +392,21 @@ async function drawMicroStrip(
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 6, h)
 
-  const qrSize = 32
-  const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, 8, (h - qrSize) / 2, qrSize, qrSize)
+  const BASE_QR = 32
+  const adjQrSz = Math.max(10, Math.round(BASE_QR * adj.qrScale))
+  const qrImg   = await makeQR(qrValue(spool, enc), adjQrSz)
+  ctx.drawImage(qrImg, 8 + (BASE_QR - adjQrSz) / 2 + adj.qrOffsetX, (h - adjQrSz) / 2 + adj.qrOffsetY, adjQrSz, adjQrSz)
 
-  const textX = 8 + qrSize + 4
-  const fillW = hasFill ? 56 : 0
-  const textW = w - textX - fillW - 4
+  const textX  = 8 + BASE_QR + 4 + adj.textOffsetX
+  const fillW  = hasFill ? 56 : 0
+  const textW  = w - textX - fillW - 4
+  const midY   = h / 2 + adj.textOffsetY
 
-  const F_name = font(700, 8)
-  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, h / 2 - 4, F_name, '#111827', 'middle')
+  const F_name = font(700, 8 * adj.textScale)
+  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, midY - 4 * adj.textScale, F_name, '#111827', 'middle')
   if (textSlot) {
-    const F_sec = font(400, 7)
-    fillTextSharp(ctx, truncCss(ctx, slotText(textSlot, spool), textW, F_sec), textX, h / 2 + 5, F_sec, '#6b7280', 'middle')
+    const F_sec = font(400, 7 * adj.textScale)
+    fillTextSharp(ctx, truncCss(ctx, slotText(textSlot, spool), textW, F_sec), textX, midY + 5 * adj.textScale, F_sec, '#6b7280', 'middle')
   }
   if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, w - fillW - 2, h / 2 - 3, fillW - 12, 5)
 }
@@ -399,7 +416,7 @@ async function drawMicroStrip(
 async function drawSquareClassic(
   ctx: CanvasRenderingContext2D,
   spool: SpoolResponse, slots: ClassicSlot[], enc: QrEncoding,
-  w: number, h: number,
+  w: number, h: number, adj: LabelAdjustments,
 ) {
   const fp      = spool.filament
   const hex     = fp?.color_hex ?? spool.color_hex ?? null
@@ -428,11 +445,12 @@ async function drawSquareClassic(
   const footerH = (rows.length > 0 ? rows.length * 9 : 0) + (hasFill ? 10 : 0) + 6
   const footerY = h - footerH
   const midH    = footerY - headerEnd
-  const qrSize  = 49
-  const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, cx - qrSize / 2, headerEnd + (midH - qrSize) / 2, qrSize, qrSize)
+  const BASE_QR = 49
+  const adjQrSz = Math.max(10, Math.round(BASE_QR * adj.qrScale))
+  const qrImg   = await makeQR(qrValue(spool, enc), adjQrSz)
+  ctx.drawImage(qrImg, cx - adjQrSz / 2 + adj.qrOffsetX, headerEnd + (midH - adjQrSz) / 2 + adj.qrOffsetY, adjQrSz, adjQrSz)
 
-  if (rows.length > 0) drawSlotRows(ctx, rows, spool, 10, footerY, textW, rows.length * 9, true)
+  if (rows.length > 0) drawSlotRows(ctx, rows, spool, 10 + adj.textOffsetX, footerY + adj.textOffsetY, textW, rows.length * 9, true, adj.textScale)
   if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, 10, h - 10, textW, 4)
 }
 
@@ -441,7 +459,7 @@ async function drawSquareClassic(
 async function drawTallCard(
   ctx: CanvasRenderingContext2D,
   spool: SpoolResponse, slots: ClassicSlot[], enc: QrEncoding,
-  w: number, h: number,
+  w: number, h: number, adj: LabelAdjustments,
 ) {
   const fp      = spool.filament
   const hex     = fp?.color_hex ?? spool.color_hex ?? null
@@ -467,11 +485,12 @@ async function drawTallCard(
   const footerH = (rows.length > 0 ? rows.length * 9 : 0) + (hasFill ? 10 : 0) + 6
   const footerY = h - footerH
   const midH    = footerY - headerEnd
-  const qrSize  = 58
-  const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, (w - qrSize) / 2, headerEnd + (midH - qrSize) / 2, qrSize, qrSize)
+  const BASE_QR = 58
+  const adjQrSz = Math.max(10, Math.round(BASE_QR * adj.qrScale))
+  const qrImg   = await makeQR(qrValue(spool, enc), adjQrSz)
+  ctx.drawImage(qrImg, w / 2 - adjQrSz / 2 + adj.qrOffsetX, headerEnd + (midH - adjQrSz) / 2 + adj.qrOffsetY, adjQrSz, adjQrSz)
 
-  if (rows.length > 0) drawSlotRows(ctx, rows, spool, 6, footerY, w - 12, rows.length * 9, true)
+  if (rows.length > 0) drawSlotRows(ctx, rows, spool, 6 + adj.textOffsetX, footerY + adj.textOffsetY, w - 12, rows.length * 9, true, adj.textScale)
   if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, 6, h - 10, w - 12, 4)
 }
 
@@ -480,7 +499,7 @@ async function drawTallCard(
 async function drawNarrowPortrait(
   ctx: CanvasRenderingContext2D,
   spool: SpoolResponse, slots: ClassicSlot[], enc: QrEncoding,
-  w: number, h: number,
+  w: number, h: number, adj: LabelAdjustments,
 ) {
   const fp      = spool.filament
   const hex     = fp?.color_hex ?? spool.color_hex ?? null
@@ -491,19 +510,21 @@ async function drawNarrowPortrait(
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, w, 8)
 
-  const qrSize = 61
-  const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, (w - qrSize) / 2, 10, qrSize, qrSize)
+  const BASE_QR = 61
+  const adjQrSz = Math.max(10, Math.round(BASE_QR * adj.qrScale))
+  const qrImg   = await makeQR(qrValue(spool, enc), adjQrSz)
+  ctx.drawImage(qrImg, w / 2 - adjQrSz / 2 + adj.qrOffsetX, 10 + adj.qrOffsetY, adjQrSz, adjQrSz)
 
-  const textY  = 10 + qrSize + 4
-  const F_name = font(700, 8)
-  fillTextSharp(ctx, truncCss(ctx, name, w - 8, F_name), w / 2, textY, F_name, '#111827', 'top', 'center')
+  const textCX = w / 2 + adj.textOffsetX
+  const textY  = 10 + BASE_QR + 4 + adj.textOffsetY   // position based on base size so text doesn't jump
+  const F_name = font(700, 8 * adj.textScale)
+  fillTextSharp(ctx, truncCss(ctx, name, w - 8, F_name), textCX, textY, F_name, '#111827', 'top', 'center')
 
   rows.forEach((slot, i) => {
     const value = slotText(slot, spool)
     if (!value || value === '—') return
-    const F = font(400, 7)
-    fillTextSharp(ctx, truncCss(ctx, value, w - 8, F), w / 2, textY + 12 + i * 9, F, '#6b7280', 'top', 'center')
+    const F = font(400, 7 * adj.textScale)
+    fillTextSharp(ctx, truncCss(ctx, value, w - 8, F), textCX, textY + 12 * adj.textScale + i * 9 * adj.textScale, F, '#6b7280', 'top', 'center')
   })
 
   if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, 6, h - 10, w - 12, 4)
@@ -598,6 +619,7 @@ export async function renderSpoolLabel(
   template: LabelTemplate,
   slots: ClassicSlot[],
   encoding: QrEncoding,
+  adj: LabelAdjustments = DEFAULT_LABEL_ADJUSTMENTS,
 ): Promise<string> {
   await loadFonts()
   const { w, h } = LABEL_PX[template]
@@ -608,13 +630,13 @@ export async function renderSpoolLabel(
   ctx.scale(SCALE, SCALE)
 
   switch (template) {
-    case 'classic-badge':   await drawClassicBadge(ctx, spool, slots, encoding, w, h);   break
-    case 'wide-card':       await drawWideCard(ctx, spool, slots, encoding, w, h);       break
-    case 'slim-tag':        await drawSlimTag(ctx, spool, slots, encoding, w, h);        break
-    case 'micro-strip':     await drawMicroStrip(ctx, spool, slots, encoding, w, h);     break
-    case 'square-classic':  await drawSquareClassic(ctx, spool, slots, encoding, w, h);  break
-    case 'tall-card':       await drawTallCard(ctx, spool, slots, encoding, w, h);       break
-    case 'narrow-portrait': await drawNarrowPortrait(ctx, spool, slots, encoding, w, h); break
+    case 'classic-badge':   await drawClassicBadge(ctx, spool, slots, encoding, w, h, adj);   break
+    case 'wide-card':       await drawWideCard(ctx, spool, slots, encoding, w, h, adj);       break
+    case 'slim-tag':        await drawSlimTag(ctx, spool, slots, encoding, w, h, adj);        break
+    case 'micro-strip':     await drawMicroStrip(ctx, spool, slots, encoding, w, h, adj);     break
+    case 'square-classic':  await drawSquareClassic(ctx, spool, slots, encoding, w, h, adj);  break
+    case 'tall-card':       await drawTallCard(ctx, spool, slots, encoding, w, h, adj);       break
+    case 'narrow-portrait': await drawNarrowPortrait(ctx, spool, slots, encoding, w, h, adj); break
   }
 
   return canvas.toDataURL('image/png')

@@ -12,8 +12,8 @@ import { spoolsApi } from '@/api/spools'
 import { locationsApi } from '@/api/locations'
 import { Input } from '@/components/ui/Input'
 import { Toggle } from '@/components/ui/Toggle'
-import { SpoolLabel, LABEL_PX, CLASSIC_FIELD_OPTIONS, CLASSIC_FIELD_LABELS, TEMPLATE_DEFAULT_SLOTS } from './SpoolLabel'
-import type { LabelTemplate, QrEncoding, ClassicSlot, ClassicFieldOption } from './SpoolLabel'
+import { SpoolLabel, LABEL_PX, CLASSIC_FIELD_OPTIONS, CLASSIC_FIELD_LABELS, TEMPLATE_DEFAULT_SLOTS, DEFAULT_LABEL_ADJUSTMENTS } from './SpoolLabel'
+import type { LabelTemplate, QrEncoding, ClassicSlot, ClassicFieldOption, LabelAdjustments } from './SpoolLabel'
 import type { SpoolResponse, LocationResponse } from '@/types/api'
 
 // ── Template registry ─────────────────────────────────────────────────────────
@@ -509,29 +509,31 @@ const LS_SLOT_DEFAULTS  = 'qr-label-slot-defaults'
 // Uses the same renderer as download so preview always matches the exported image.
 
 function SpoolLabelCanvas({
-  spool, template, slots, encoding, scale,
+  spool, template, slots, encoding, scale, adj,
 }: {
   spool:    SpoolResponse
   template: LabelTemplate
   slots:    ClassicSlot[]
   encoding: QrEncoding
   scale:    number
+  adj:      LabelAdjustments
 }) {
   const { w, h } = LABEL_PX[template]
   const [src,     setSrc]     = useState('')
   const [loading, setLoading] = useState(true)
 
   const slotsKey = slots.map(s => `${s.field}:${s.enabled}`).join(',')
+  const adjKey   = `${adj.qrScale}:${adj.qrOffsetX}:${adj.qrOffsetY}:${adj.textScale}:${adj.textOffsetX}:${adj.textOffsetY}`
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
-    renderSpoolLabel(spool, template, slots, encoding).then(url => {
+    renderSpoolLabel(spool, template, slots, encoding, adj).then(url => {
       if (!cancelled) { setSrc(url); setLoading(false) }
     })
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spool.id, template, encoding, slotsKey])
+  }, [spool.id, template, encoding, slotsKey, adjKey])
 
   return (
     <div
@@ -556,9 +558,47 @@ function SpoolLabelCanvas({
   )
 }
 
+// ── Layout adjustment slider ──────────────────────────────────────────────────
+
+function AdjSlider({
+  label, value, def, min, max, step, fmt, onChange,
+}: {
+  label: string; value: number; def: number
+  min: number; max: number; step: number
+  fmt: (v: number) => string
+  onChange: (v: number) => void
+}) {
+  const dirty = Math.abs(value - def) > 0.001
+  return (
+    <div className="flex items-center gap-1.5 h-5">
+      <span className="text-[10px] text-gray-500 w-3 shrink-0">{label}</span>
+      <input
+        type="range" min={min} max={max} step={step} value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="flex-1 h-0.5 accent-primary-500 cursor-pointer"
+      />
+      <span className="text-[10px] tabular-nums text-gray-400 w-9 text-right shrink-0">{fmt(value)}</span>
+      <button
+        onClick={() => onChange(def)}
+        className={`w-3 text-[10px] text-center transition-opacity leading-none ${dirty ? 'text-gray-500 hover:text-gray-300' : 'opacity-0 pointer-events-none'}`}
+        title="Reset"
+      >×</button>
+    </div>
+  )
+}
+
 function loadSavedDefaults(): Partial<Record<LabelTemplate, ClassicSlot[]>> {
   try {
     const raw = localStorage.getItem(LS_SLOT_DEFAULTS)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
+
+const LS_ADJUSTMENTS = 'qr-label-adjustments'
+
+function loadSavedAdjustments(): Partial<Record<LabelTemplate, LabelAdjustments>> {
+  try {
+    const raw = localStorage.getItem(LS_ADJUSTMENTS)
     return raw ? JSON.parse(raw) : {}
   } catch { return {} }
 }
@@ -578,6 +618,7 @@ export default function QrLabelsPage() {
   const [templateSlots,  setTemplateSlots]  = useState<Partial<Record<LabelTemplate, ClassicSlot[]>>>(loadSavedDefaults)
   const [locSelected,    setLocSelected]    = useState<Set<number>>(new Set())
   const [savedDefault,   setSavedDefault]   = useState(false)
+  const [adjustments,    setAdjustments]    = useState<Partial<Record<LabelTemplate, LabelAdjustments>>>(loadSavedAdjustments)
 
   const [exporting, setExporting] = useState(false)
 
@@ -626,9 +667,27 @@ export default function QrLabelsPage() {
   function resetSlots() {
     setTemplateSlots((prev) => { const next = { ...prev }; delete next[template]; return next })
   }
+
+  const currentAdj = adjustments[template] ?? DEFAULT_LABEL_ADJUSTMENTS
+
+  function updateAdj(key: keyof LabelAdjustments, value: number) {
+    setAdjustments((prev) => {
+      const next = { ...prev, [template]: { ...(prev[template] ?? DEFAULT_LABEL_ADJUSTMENTS), [key]: value } }
+      localStorage.setItem(LS_ADJUSTMENTS, JSON.stringify(next))
+      return next
+    })
+  }
+  function resetAllAdj() {
+    setAdjustments((prev) => {
+      const next = { ...prev }; delete next[template]
+      localStorage.setItem(LS_ADJUSTMENTS, JSON.stringify(next))
+      return next
+    })
+  }
+
   function saveAsDefault() {
-    const next = { ...loadSavedDefaults(), [template]: currentSlots }
-    localStorage.setItem(LS_SLOT_DEFAULTS, JSON.stringify(next))
+    localStorage.setItem(LS_SLOT_DEFAULTS, JSON.stringify({ ...loadSavedDefaults(), [template]: currentSlots }))
+    localStorage.setItem(LS_ADJUSTMENTS,   JSON.stringify({ ...loadSavedAdjustments(), [template]: currentAdj }))
     setSavedDefault(true)
   }
   useEffect(() => {
@@ -647,11 +706,11 @@ export default function QrLabelsPage() {
     setExporting(true)
     try {
       if (selectedSpools.length === 1) {
-        const url = await renderSpoolLabel(selectedSpools[0], template, currentSlots, encoding)
+        const url = await renderSpoolLabel(selectedSpools[0], template, currentSlots, encoding, currentAdj)
         triggerDownload(url, `spool-${selectedSpools[0].id}.png`)
       } else {
         const urls = await Promise.all(
-          selectedSpools.map((s) => renderSpoolLabel(s, template, currentSlots, encoding))
+          selectedSpools.map((s) => renderSpoolLabel(s, template, currentSlots, encoding, currentAdj))
         )
         await bundleZip(urls, selectedSpools.map((_, i) => `${i + 1}.png`), 'spool-labels.zip')
       }
@@ -683,7 +742,7 @@ export default function QrLabelsPage() {
       const { mmW, mmH } = activeEntry
       if (selectedSpools.length === 1) {
         const spool = selectedSpools[0]
-        const png   = await renderSpoolLabel(spool, template, currentSlots, encoding)
+        const png   = await renderSpoolLabel(spool, template, currentSlots, encoding, currentAdj)
         const name  = spool.name ?? spool.filament?.name ?? `spool-${spool.id}`
         const aml   = generateAml(png, name, mmW, mmH)
         triggerDownload(
@@ -695,7 +754,7 @@ export default function QrLabelsPage() {
         const zip   = new JSZip()
         for (let i = 0; i < selectedSpools.length; i++) {
           const spool = selectedSpools[i]
-          const png   = await renderSpoolLabel(spool, template, currentSlots, encoding)
+          const png   = await renderSpoolLabel(spool, template, currentSlots, encoding, currentAdj)
           const name  = spool.name ?? spool.filament?.name ?? `spool-${spool.id}`
           const aml   = generateAml(png, name, mmW, mmH)
           zip.file(`${i + 1}.aml`, aml)
@@ -1035,6 +1094,32 @@ export default function QrLabelsPage() {
                     </div>
                   ))}
                 </div>
+
+                {/* Layout sliders */}
+                <div className="mt-3 pt-3 border-t border-surface-border">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Layout</p>
+                    {adjustments[template] && (
+                      <button onClick={resetAllAdj} className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors">
+                        Reset layout
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-5">
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wider text-gray-600 mb-1.5">QR Code</p>
+                      <AdjSlider label="S" value={currentAdj.qrScale}   def={1} min={0.4} max={1.6} step={0.02} fmt={v => `${Math.round(v*100)}%`} onChange={v => updateAdj('qrScale',   v)} />
+                      <AdjSlider label="X" value={currentAdj.qrOffsetX} def={0} min={-40} max={40}  step={1}    fmt={v => `${v}px`}                 onChange={v => updateAdj('qrOffsetX', v)} />
+                      <AdjSlider label="Y" value={currentAdj.qrOffsetY} def={0} min={-40} max={40}  step={1}    fmt={v => `${v}px`}                 onChange={v => updateAdj('qrOffsetY', v)} />
+                    </div>
+                    <div>
+                      <p className="text-[9px] uppercase tracking-wider text-gray-600 mb-1.5">Fields</p>
+                      <AdjSlider label="S" value={currentAdj.textScale}   def={1} min={0.6} max={1.4} step={0.02} fmt={v => `${Math.round(v*100)}%`} onChange={v => updateAdj('textScale',   v)} />
+                      <AdjSlider label="X" value={currentAdj.textOffsetX} def={0} min={-30} max={30}  step={1}    fmt={v => `${v}px`}                 onChange={v => updateAdj('textOffsetX', v)} />
+                      <AdjSlider label="Y" value={currentAdj.textOffsetY} def={0} min={-30} max={30}  step={1}    fmt={v => `${v}px`}                 onChange={v => updateAdj('textOffsetY', v)} />
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1063,6 +1148,7 @@ export default function QrLabelsPage() {
                             slots={currentSlots}
                             encoding={encoding}
                             scale={previewScale}
+                            adj={currentAdj}
                           />
                         ))}
                       </div>
