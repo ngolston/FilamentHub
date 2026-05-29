@@ -505,6 +505,57 @@ const PRINT_AREA_ID     = 'qr-label-print-area'
 const LOC_PRINT_AREA_ID = 'qr-label-loc-print-area'
 const LS_SLOT_DEFAULTS  = 'qr-label-slot-defaults'
 
+// ── Canvas-based spool label preview ──────────────────────────────────────────
+// Uses the same renderer as download so preview always matches the exported image.
+
+function SpoolLabelCanvas({
+  spool, template, slots, encoding, scale,
+}: {
+  spool:    SpoolResponse
+  template: LabelTemplate
+  slots:    ClassicSlot[]
+  encoding: QrEncoding
+  scale:    number
+}) {
+  const { w, h } = LABEL_PX[template]
+  const [src,     setSrc]     = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const slotsKey = slots.map(s => `${s.field}:${s.enabled}`).join(',')
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    renderSpoolLabel(spool, template, slots, encoding).then(url => {
+      if (!cancelled) { setSrc(url); setLoading(false) }
+    })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spool.id, template, encoding, slotsKey])
+
+  return (
+    <div
+      className="relative rounded border border-gray-300 shadow-sm overflow-hidden select-none bg-white"
+      style={{ width: w * scale, height: h * scale }}
+    >
+      {src && (
+        <img
+          src={src}
+          width={w * scale}
+          height={h * scale}
+          style={{ display: 'block' }}
+          alt=""
+        />
+      )}
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-gray-300 border-t-gray-600" />
+        </div>
+      )}
+    </div>
+  )
+}
+
 function loadSavedDefaults(): Partial<Record<LabelTemplate, ClassicSlot[]>> {
   try {
     const raw = localStorage.getItem(LS_SLOT_DEFAULTS)
@@ -999,18 +1050,20 @@ export default function QrLabelsPage() {
                   {(() => {
                     const px    = LABEL_PX[template]
                     const cellW = px.w * previewScale
-                    const cellH = px.h * previewScale
                     return (
                       <div
                         className="grid gap-4 items-start"
                         style={{ gridTemplateColumns: `repeat(${columns}, ${cellW}px)` }}
                       >
                         {selectedSpools.map((spool) => (
-                          <div key={spool.id} style={{ width: cellW, height: cellH, overflow: 'hidden' }}>
-                            <div style={{ transform: `scale(${previewScale})`, transformOrigin: 'top left' }}>
-                              <SpoolLabel spool={spool} template={template} slots={currentSlots} encoding={encoding} />
-                            </div>
-                          </div>
+                          <SpoolLabelCanvas
+                            key={spool.id}
+                            spool={spool}
+                            template={template}
+                            slots={currentSlots}
+                            encoding={encoding}
+                            scale={previewScale}
+                          />
                         ))}
                       </div>
                     )

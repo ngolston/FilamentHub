@@ -13,6 +13,36 @@ import { LABEL_PX, CLASSIC_FIELD_LABELS } from './SpoolLabel'
 
 const SCALE = 4   // 4× CSS pixels → ~380 dpi on a 40 × 30 mm label
 
+// ── Color family derivation (mirrors SpoolLabel.tsx) ─────────────────────────
+
+function hexToColorFamily(hex: string | null): string {
+  if (!hex) return '—'
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return '—'
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  if (l < 26)  return 'Black'
+  if (l > 229) return 'White'
+  const s = max === min ? 0 : l < 128 ? (max - min) / (max + min) : (max - min) / (510 - max - min)
+  if (s < 0.15) return 'Gray'
+  let h = 0
+  if (max === r) h = ((g - b) / (max - min)) % 6
+  else if (max === g) h = (b - r) / (max - min) + 2
+  else h = (r - g) / (max - min) + 4
+  h = Math.round(h * 60)
+  if (h < 0) h += 360
+  if (h < 15 || h >= 345) return 'Red'
+  if (h < 45)  return 'Orange'
+  if (h < 70)  return 'Yellow'
+  if (h < 150) return 'Green'
+  if (h < 195) return 'Teal'
+  if (h < 255) return 'Blue'
+  if (h < 300) return 'Purple'
+  return 'Pink'
+}
+
 // ── Font string helpers ───────────────────────────────────────────────────────
 
 function font(weight: number, cssPx: number) {
@@ -101,7 +131,7 @@ async function makeQR(value: string, cssPx: number): Promise<HTMLCanvasElement> 
     width: cssPx * SCALE,   // physical pixels → 1-to-1 draw, no upscaling
     margin: 0,
     color: { dark: '#000000', light: '#ffffff' },
-    errorCorrectionLevel: 'H',
+    errorCorrectionLevel: 'M',
   })
   return c
 }
@@ -134,8 +164,10 @@ function slotText(slot: ClassicSlot, spool: SpoolResponse): string {
     case 'material': return fp?.material ?? '—'
     case 'diameter': return fp?.diameter ? `${fp.diameter}mm` : '—'
     case 'brand':    return fp?.brand?.name ?? spool.brand?.name ?? '—'
-    case 'name':     return spool.name ?? fp?.name ?? '—'
-    default:         return ''
+    case 'name':         return spool.name ?? fp?.name ?? '—'
+    case 'color_family': return hexToColorFamily(fp?.color_hex ?? spool.color_hex ?? null)
+    case 'color_name':   return fp?.color_name ?? '—'
+    default:             return ''
   }
 }
 
@@ -191,61 +223,64 @@ function drawFillBar(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── 1. Classic Badge (151×113 = 40×30mm) ─────────────────────────────────────
+// Layout: brand (top) → dark material bar (full-width) → [left: name+slots | right: QR]
 
 async function drawClassicBadge(
   ctx: CanvasRenderingContext2D,
   spool: SpoolResponse, slots: ClassicSlot[], enc: QrEncoding,
   w: number, h: number,
 ) {
-  const fp        = spool.filament
-  const hex       = fp?.color_hex ?? spool.color_hex ?? null
-  const brand     = (fp?.brand?.name ?? spool.brand?.name ?? 'Unknown').toUpperCase()
-  const mat       = fp?.material ?? '—'
-  const diam      = fp?.diameter ? `/${fp.diameter}mm` : ''
-  const colorName = fp?.color_name ?? spool.name ?? hex ?? '—'
-  const rows      = slots.filter(s => s.enabled && s.field !== 'none' && s.field !== 'fill_bar')
-  const hasFill   = slots.some(s => s.enabled && s.field === 'fill_bar')
+  const fp    = spool.filament
+  const hex   = fp?.color_hex ?? spool.color_hex ?? null
+  const brand = (fp?.brand?.name ?? spool.brand?.name ?? 'Unknown').toUpperCase()
+  const mat   = fp?.material ?? '—'
+  const diam  = fp?.diameter ? ` · ${fp.diameter}mm` : ''
+  const name  = spool.name ?? fp?.name ?? '—'
+  const rows  = slots.filter(s => s.enabled && s.field !== 'none' && s.field !== 'fill_bar')
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
 
-  // Brand name
-  const F_brand = font(900, 20)
-  fillTextSharp(ctx, truncCss(ctx, brand, w - 6, F_brand), 4, 3, F_brand, '#000000')
-  let y = 3 + 20 + 3   // = 26
+  // Brand (px-2 pt-1.5 → left=8, top=6; font 14px black)
+  const F_brand = font(900, 14)
+  fillTextSharp(ctx, truncCss(ctx, brand, w - 16, F_brand), 8, 6, F_brand, '#111827')
+  const brandH = 6 + 14 + 2   // pt-1.5 + font + small gap
 
-  // Material bar (partial) + hex outside
-  const barH   = 15
-  const F_hex  = mono(9.5)
+  // Material bar (full width, mt-1=4px, py=[3px], font 9px)
+  const barTop = brandH + 4
+  const barH   = 6 + 9        // py-[3px] each side + font
   const F_mat  = font(700, 9)
-  const hexW   = hex ? measureCss(ctx, hex, F_hex) + 8 : 0
-  const barW   = w - hexW - 4
+  const F_hex  = mono(7.5)
+  ctx.fillStyle = '#111827'; ctx.fillRect(0, barTop, w, barH)
+  const matStr = `${mat}${diam}`
+  const hexW   = hex ? measureCss(ctx, hex, F_hex) + 4 : 0
+  const matMaxW = w - 16 - hexW
+  fillTextSharp(ctx, truncCss(ctx, matStr, matMaxW, F_mat), 8, barTop + (barH - 9) / 2, F_mat, '#ffffff', 'top', 'left')
+  if (hex) fillTextSharp(ctx, hex, w - 8, barTop + barH / 2, F_hex, '#d1d5db', 'middle', 'right')
 
-  ctx.fillStyle = '#111111'; ctx.fillRect(0, y, barW, barH)
-  fillTextSharp(ctx, truncCss(ctx, `${mat}${diam}`, barW - 10, F_mat), 5, y + (barH - 9) / 2, F_mat, '#ffffff', 'top', 'left')
-  if (hex) fillTextSharp(ctx, hex, barW + 4, y + barH / 2, F_hex, '#000000', 'middle', 'left')
-  y += barH + 3   // = 44
+  // Body starts below bar (pt-1 = 4px below bar)
+  const bodyTop = barTop + barH + 4
 
-  // Color name
-  const F_color = font(700, 14)
-  fillTextSharp(ctx, truncCss(ctx, colorName, w - 6, F_color), 4, y, F_color, '#000000')
-  y += 14 + 5   // = 63
+  // QR — right column (px-1.5 = 6px padding each side, pt-1 pb-1.5 vertical padding)
+  const qrSize  = 62
+  const qrPadX  = 6
+  const qrColW  = qrSize + qrPadX * 2
+  const qrX     = w - qrColW + qrPadX
+  const bodyH   = h - bodyTop - 6   // pb-1.5 = 6
+  const qrY     = bodyTop + (bodyH - qrSize) / 2
+  const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
+  ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
 
-  // QR + data rows
-  const botPad = 4
-  const qrSize = h - y - botPad
-  const qrX    = w - botPad - qrSize
-  const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, qrX, y, qrSize, qrSize)
-
-  const colW = qrX - 3 - 4
-  if (hasFill && rows.length === 0) {
-    drawFillBar(ctx, spool.fill_percentage, hex, 4, y + qrSize - 5, colW, 5)
-  } else {
-    drawSlotRows(ctx, rows, spool, 4, y, colW, qrSize, true)
-  }
+  // Left column — name (pt-1 top, font 9px) then slots
+  const textX   = 8
+  const textW   = w - qrColW - textX - 4
+  const F_name  = font(700, 9)
+  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, bodyTop, F_name, '#1f2937')
+  const slotsTop = bodyTop + 9 + 2
+  drawSlotRows(ctx, rows, spool, textX, slotsTop, textW, bodyH - (9 + 2), false)
 }
 
 // ── 2. Wide Card (189×113 = 50×30mm) ─────────────────────────────────────────
+// Layout: color stripe left | [left: brand+name+slots+fillbar | right: QR full-height]
 
 async function drawWideCard(
   ctx: CanvasRenderingContext2D,
@@ -260,26 +295,32 @@ async function drawWideCard(
   const hasFill = slots.some(s => s.enabled && s.field === 'fill_bar')
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
+  // Color stripe (w-2 = 8px)
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 8, h)
 
-  const qrSize = 62
-  const qrX    = w - 6 - qrSize
+  // QR — right column (px-2 = 8px pad each side)
+  const qrSize = 68
+  const qrPadX = 8
+  const qrColW = qrSize + qrPadX * 2
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, qrX, (h - qrSize) / 2, qrSize, qrSize)
+  ctx.drawImage(qrImg, w - qrColW + qrPadX, (h - qrSize) / 2, qrSize, qrSize)
 
-  const textX = 10
-  const textW = qrX - 4 - textX
+  // Left text column (px-2 py-1.5 → left=16 from edge, top=6)
+  const textX  = 16   // stripe(8) + px-2(8)
+  const textW  = w - 8 - qrColW - 8   // minus stripe, QR col, right pad of text col
+  let   y      = 6
 
   if (brand) {
     const F = font(400, 7)
-    fillTextSharp(ctx, truncCss(ctx, brand.toUpperCase(), textW, F), textX, 8, F, '#9ca3af')
+    fillTextSharp(ctx, truncCss(ctx, brand.toUpperCase(), textW, F), textX, y, F, '#9ca3af')
+    y += 7 + 4
   }
   const F_name = font(700, 11)
-  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, brand ? 17 : 10, F_name, '#111827')
+  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, y, F_name, '#111827')
+  y += 11 + 4
 
-  const dataY = brand ? 30 : 24
-  const dataH = h - dataY - (hasFill ? 14 : 6)
-  drawSlotRows(ctx, rows, spool, textX, dataY, textW, dataH, true)
+  const dataH = h - y - (hasFill ? 16 : 6)
+  drawSlotRows(ctx, rows, spool, textX, y, textW, dataH, true)
   if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, textX, h - 10, textW, 5)
 }
 
@@ -306,7 +347,7 @@ async function drawSlimTag(
   if (brand) fillTextSharp(ctx, truncCss(ctx, brand, (w / 2) - 6, F_hdr), 6, 1, F_hdr, 'rgba(255,255,255,0.9)')
   fillTextSharp(ctx, truncCss(ctx, mat, (w / 2) - 6, F_hdr), w - 4, 1, F_hdr, 'rgba(255,255,255,0.9)', 'top', 'right')
 
-  const qrSize = 58
+  const qrSize = 56
   const bodyY  = hdrH + 2
   const bodyH  = h - bodyY - (hasFill ? 12 : 4)
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
@@ -336,7 +377,7 @@ async function drawMicroStrip(
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 6, h)
 
-  const qrSize = 38
+  const qrSize = 36
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, 8, (h - qrSize) / 2, qrSize, qrSize)
 
@@ -387,7 +428,7 @@ async function drawSquareClassic(
   const footerH = (rows.length > 0 ? rows.length * 9 : 0) + (hasFill ? 10 : 0) + 6
   const footerY = h - footerH
   const midH    = footerY - headerEnd
-  const qrSize  = 65
+  const qrSize  = 54
   const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, cx - qrSize / 2, headerEnd + (midH - qrSize) / 2, qrSize, qrSize)
 
@@ -426,7 +467,7 @@ async function drawTallCard(
   const footerH = (rows.length > 0 ? rows.length * 9 : 0) + (hasFill ? 10 : 0) + 6
   const footerY = h - footerH
   const midH    = footerY - headerEnd
-  const qrSize  = 78
+  const qrSize  = 64
   const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, (w - qrSize) / 2, headerEnd + (midH - qrSize) / 2, qrSize, qrSize)
 
@@ -450,7 +491,7 @@ async function drawNarrowPortrait(
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, w, 8)
 
-  const qrSize = 72
+  const qrSize = 68
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, (w - qrSize) / 2, 10, qrSize, qrSize)
 
