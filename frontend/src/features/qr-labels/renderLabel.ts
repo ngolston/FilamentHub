@@ -82,19 +82,28 @@ function drawSlotRows(
   compact = false,
 ) {
   if (rows.length === 0) return
-  const fs    = compact ? 7 : 7.5
-  const labelW = 40
-  const rowH  = h / rows.length
+  // Label at a smaller size (gray), value at a slightly larger bold size.
+  // Measuring the label dynamically lets the value use all remaining width
+  // — critical when the left column is narrow next to a large QR code.
+  const labelFs = compact ? 6 : 6.5
+  const valFs   = compact ? 7.5 : 8
+  const rowH    = h / rows.length
+
   rows.forEach((slot, i) => {
     const label = CLASSIC_FIELD_LABELS[slot.field] ?? ''
     const value = slotText(slot, spool)
-    const ry    = y + i * rowH + (rowH - fs) / 2
+    const ry    = y + i * rowH + (rowH - valFs) / 2
+
+    let labelW = 0
     if (label) {
-      ctx.font = font(400, fs); ctx.fillStyle = '#9ca3af'; ctx.textBaseline = 'top'
-      ctx.fillText(label, x, ry)
+      ctx.font = font(400, labelFs); ctx.fillStyle = '#9ca3af'; ctx.textBaseline = 'top'
+      // Vertically centre the smaller label text against the taller value text
+      ctx.fillText(label, x, ry + (valFs - labelFs) / 2)
+      labelW = ctx.measureText(label).width + 3
     }
-    ctx.font = font(600, fs); ctx.fillStyle = '#1f2937'
-    ctx.fillText(trunc(ctx, value, w - (label ? labelW : 0)), label ? x + labelW : x, ry)
+
+    ctx.font = font(700, valFs); ctx.fillStyle = '#1f2937'
+    ctx.fillText(trunc(ctx, value, w - labelW), x + labelW, ry)
   })
 }
 
@@ -115,7 +124,10 @@ function drawFillBar(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── 1. Classic Badge (151×113 = 40×30mm) ─────────────────────────────────────
-// QR: 65px (was 38) — bottom-right anchor, left column for data
+// QR: 65px — right side, spans the full content area height.
+// Left column: spool name (compact) + all data rows stacked below.
+// Labels rendered at 6px (gray), values at 7.5px (bold) with dynamic width
+// allocation so even long values like "250–280°C" have room to breathe.
 
 async function drawClassicBadge(
   ctx: CanvasRenderingContext2D,
@@ -133,46 +145,50 @@ async function drawClassicBadge(
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.textBaseline = 'top'
 
-  // Brand — 12px black, 4px top pad
+  // ── Brand strip ───────────────────────────────────────────────────
   ctx.font = font(900, 12); ctx.fillStyle = '#111827'
   ctx.fillText(trunc(ctx, brand, w - 16), 8, 4)
-  const afterBrand = 4 + 12 + 4   // top pad + text + gap
+  const afterBrand = 4 + 12 + 3
 
-  // Material bar — dark, 15px high
+  // ── Material bar ──────────────────────────────────────────────────
   const barH = 15
   ctx.fillStyle = '#111827'; ctx.fillRect(0, afterBrand, w, barH)
-  // hex right — 9.5px mono (bigger)
   ctx.font = mono(9.5); ctx.fillStyle = '#d1d5db'
   const hexW = hex ? ctx.measureText(hex).width + 6 : 0
   if (hex) { ctx.textAlign = 'right'; ctx.fillText(hex, w - 6, afterBrand + 3); ctx.textAlign = 'left' }
-  // material left — 9px bold white
   ctx.font = font(700, 9); ctx.fillStyle = '#ffffff'
   ctx.fillText(trunc(ctx, mat, w - 14 - hexW), 6, afterBrand + 3)
 
-  const contentY = afterBrand + barH + 2   // y where content area begins
+  // ── Content area starts here ──────────────────────────────────────
+  const contentY = afterBrand + barH + 2
 
-  // QR — 65px, anchored to bottom-right with 4px margin
-  const qrSize = 65
+  // QR — 65px, right side, spans from contentY to near bottom
   const botPad = 4
-  const qrX    = w - botPad - qrSize   // = 82
-  const qrY    = h - botPad - qrSize   // = 44
+  const qrSize = 65
+  const qrX    = w - botPad - qrSize        // x=82
+  const qrY    = contentY                    // top-aligned with content
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
 
-  // Left column: spool name + data rows
-  const colW   = qrX - 4 - 8   // gap from QR + left pad = 70px
-  const colH   = h - contentY - botPad
+  // ── Left column ───────────────────────────────────────────────────
+  // Width = from left pad to QR with a small gap: 151-4-65-4-8 = 70px
+  const colX = 8
+  const colW = qrX - 4 - colX              // 70px
 
-  ctx.font = font(700, 9); ctx.fillStyle = '#1f2937'
-  ctx.fillText(trunc(ctx, name, colW), 8, contentY + 2)
+  // Spool name — compact single line above the data rows
+  ctx.font = font(700, 8); ctx.fillStyle = '#1f2937'
+  ctx.fillText(trunc(ctx, name, colW), colX, contentY + 1)
+  const nameH = 10   // 8px text + 2px gap
 
-  const rowsY  = contentY + 13
-  const rowsH  = colH - 13
+  // Data rows fill the rest of the left column, aligned to QR bottom
+  const rowsY = contentY + nameH
+  const rowsH = qrY + qrSize - rowsY - botPad
 
   if (hasFill && rows.length === 0) {
-    drawFillBar(ctx, spool.fill_percentage, hex, 8, h - botPad - 5, colW - 8, 5)
+    drawFillBar(ctx, spool.fill_percentage, hex, colX, rowsY + rowsH - 5, colW, 5)
   } else {
-    drawSlotRows(ctx, rows, spool, 8, rowsY, colW, rowsH)
+    // compact=true → 6px labels, 7.5px values — fits all text in 70px column
+    drawSlotRows(ctx, rows, spool, colX, rowsY, colW, rowsH, true)
   }
 }
 
