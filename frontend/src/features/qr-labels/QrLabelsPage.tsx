@@ -224,8 +224,17 @@ function triggerDownload(href: string, filename: string) {
 }
 
 async function captureElementPng(el: HTMLElement): Promise<string> {
-  const { toPng } = await import('html-to-image')
-  return toPng(el, { pixelRatio: 3 })
+  // html2canvas walks the live DOM and draws each element directly to a
+  // <canvas> — unlike html-to-image's SVG foreignObject approach, it handles
+  // Tailwind CSS classes, external stylesheets, and QR-code SVGs correctly.
+  const html2canvas = (await import('html2canvas')).default
+  const canvas = await html2canvas(el, {
+    scale: 3,
+    backgroundColor: '#ffffff',
+    useCORS: true,
+    logging: false,
+  })
+  return canvas.toDataURL('image/png')
 }
 
 async function downloadSinglePng(el: HTMLElement, filename: string) {
@@ -574,8 +583,11 @@ export default function QrLabelsPage() {
     setExporting(true)
     setExportMode('spools')
 
-    // Wait two frames for the portal to render
-    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+    // Wait three frames: one for React to commit, two more for the browser
+    // to fully paint SVG QR codes and resolve Tailwind computed styles.
+    await new Promise<void>((r) => requestAnimationFrame(() =>
+      requestAnimationFrame(() => requestAnimationFrame(() => r()))
+    ))
 
     const container = exportAreaRef.current
     if (!container) { setExporting(false); setExportMode('idle'); return }
@@ -600,7 +612,9 @@ export default function QrLabelsPage() {
     setExporting(true)
     setExportMode('locations')
 
-    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+    await new Promise<void>((r) => requestAnimationFrame(() =>
+      requestAnimationFrame(() => requestAnimationFrame(() => r()))
+    ))
 
     const container = exportAreaRef.current
     if (!container) { setExporting(false); setExportMode('idle'); return }
@@ -994,31 +1008,42 @@ export default function QrLabelsPage() {
         document.body,
       )}
 
-      {/* ── PNG export portal — rendered off-screen at native pixel size ── */}
+      {/* ── PNG export portal ────────────────────────────────────────────
+           z-index 69 = below the "Generating…" overlay (z-70) but above
+           the normal app UI, so the browser definitely paints every label.
+           All children are stacked at position absolute top:0 left:0 so
+           every label sits inside the viewport regardless of count —
+           avoiding any off-screen paint-culling for large selections.    */}
       {exportMode !== 'idle' && createPortal(
         <div
           ref={exportAreaRef}
           id={EXPORT_AREA_ID}
           style={{
             position: 'fixed',
-            left: -9999,
-            top: -9999,
-            visibility: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 0,
+            top: 0,
+            left: 0,
+            zIndex: 69,
             pointerEvents: 'none',
           }}
         >
           {exportMode === 'spools'
-            ? selectedSpools.map((spool) => (
-                <div key={spool.id} style={{ display: 'inline-block', lineHeight: 0 }}>
-                  <SpoolLabel spool={spool} template={template} slots={currentSlots} encoding={encoding} />
-                </div>
-              ))
+            ? selectedSpools.map((spool) => {
+                const { w, h } = LABEL_PX[template]
+                return (
+                  <div
+                    key={spool.id}
+                    style={{ position: 'absolute', top: 0, left: 0, width: w, height: h }}
+                  >
+                    <SpoolLabel spool={spool} template={template} slots={currentSlots} encoding={encoding} />
+                  </div>
+                )
+              })
             : selectedLocations.map((loc) => (
-                <div key={loc.id} style={{ display: 'inline-block', lineHeight: 0 }}>
-                  <LocationBadgeLabel key={loc.id} location={loc} />
+                <div
+                  key={loc.id}
+                  style={{ position: 'absolute', top: 0, left: 0, width: LOC_W, height: LOC_H }}
+                >
+                  <LocationBadgeLabel location={loc} />
                 </div>
               ))
           }
