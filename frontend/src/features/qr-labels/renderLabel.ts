@@ -30,14 +30,19 @@ function trunc(ctx: CanvasRenderingContext2D, text: string, maxW: number): strin
 }
 
 // ── QR code helper ────────────────────────────────────────────────────────────
+// Generate at (size × SCALE) physical pixels so the source canvas maps 1-to-1
+// onto the scaled drawing context — zero upscaling, zero blur.
+// Error-correction level H (30 %) produces the densest module grid, giving
+// the richest visual detail while remaining fully scannable.
 
-async function makeQR(value: string, size: number): Promise<HTMLCanvasElement> {
+async function makeQR(value: string, cssPx: number): Promise<HTMLCanvasElement> {
   const QRCode = (await import('qrcode')).default
   const c = document.createElement('canvas')
   await QRCode.toCanvas(c, value, {
-    width: size, margin: 0,
+    width: cssPx * SCALE,   // match physical canvas pixels exactly — no upscale
+    margin: 0,
     color: { dark: '#000000', light: '#ffffff' },
-    errorCorrectionLevel: 'M',
+    errorCorrectionLevel: 'H',  // highest density & robustness
   })
   return c
 }
