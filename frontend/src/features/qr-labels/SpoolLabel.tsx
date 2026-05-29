@@ -17,7 +17,8 @@ export type QrEncoding = 'url' | 'id' | 'summary'
 
 export type ClassicFieldOption =
   | 'nozzle' | 'bed' | 'id' | 'color'
-  | 'fill' | 'fill_bar' | 'weight' | 'material' | 'diameter' | 'brand' | 'name' | 'color_family' | 'none'
+  | 'fill' | 'fill_bar' | 'weight' | 'material' | 'diameter' | 'brand' | 'name'
+  | 'color_family' | 'color_name' | 'none'
 
 export interface ClassicSlot {
   field:   ClassicFieldOption
@@ -37,6 +38,7 @@ export const CLASSIC_FIELD_OPTIONS: { value: ClassicFieldOption; label: string }
   { value: 'brand',    label: 'Brand' },
   { value: 'name',         label: 'Spool Name' },
   { value: 'color_family', label: 'Color Family' },
+  { value: 'color_name',   label: 'Color Name' },
   { value: 'none',         label: '— None —' },
 ]
 
@@ -52,7 +54,8 @@ export const CLASSIC_FIELD_LABELS: Record<ClassicFieldOption, string> = {
   diameter: 'Diameter:',
   brand:    'Brand:',
   name:         'Name:',
-  color_family: 'Color:',
+  color_family: 'Family:',
+  color_name:   'Color:',
   none:         '',
 }
 
@@ -109,6 +112,35 @@ interface Props {
 
 type TemplateProps = { spool: SpoolResponse; encoding: QrEncoding; slots: ClassicSlot[] }
 
+// ── Color family derivation ───────────────────────────────────────────────────
+
+function hexToColorFamily(hex: string | null): string {
+  if (!hex) return '—'
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  const l = (max + min) / 2
+  if (l < 26)  return 'Black'
+  if (l > 229) return 'White'
+  const s = max === min ? 0 : l < 128 ? (max - min) / (max + min) : (max - min) / (510 - max - min)
+  if (s < 0.15) return 'Gray'
+  let h = 0
+  if (max === r) h = ((g - b) / (max - min)) % 6
+  else if (max === g) h = (b - r) / (max - min) + 2
+  else h = (r - g) / (max - min) + 4
+  h = Math.round(h * 60)
+  if (h < 0) h += 360
+  if (h < 15 || h >= 345) return 'Red'
+  if (h < 45)  return 'Orange'
+  if (h < 70)  return 'Yellow'
+  if (h < 150) return 'Green'
+  if (h < 195) return 'Teal'
+  if (h < 255) return 'Blue'
+  if (h < 300) return 'Purple'
+  return 'Pink'
+}
+
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
 function qrValue(spool: SpoolResponse, encoding: QrEncoding): string {
@@ -144,7 +176,8 @@ function getSlotValue(field: ClassicFieldOption, spool: SpoolResponse): ReactNod
     case 'diameter': return fp?.diameter ? `${fp.diameter}mm` : '—'
     case 'brand':    return fp?.brand?.name ?? spool.brand?.name ?? '—'
     case 'name':         return spool.name ?? fp?.name ?? '—'
-    case 'color_family': return fp?.color_name ?? '—'
+    case 'color_family': return hexToColorFamily(fp?.color_hex ?? spool.color_hex ?? null)
+    case 'color_name':   return fp?.color_name ?? '—'
     case 'none':         return null
   }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useRef, useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
@@ -6,7 +6,7 @@ import { renderSpoolLabel, renderLocationLabel, generateAml } from './renderLabe
 import {
   Printer, CheckSquare, Square, QrCode,
   LayoutGrid, ChevronDown, Info, MapPin,
-  FileImage, FileDown, FileCode,
+  FileImage, FileDown, FileCode, Save, Check,
 } from 'lucide-react'
 import { spoolsApi } from '@/api/spools'
 import { locationsApi } from '@/api/locations'
@@ -503,7 +503,14 @@ function LocationBadgeLabel({ location, forScreen = false }: { location: Locatio
 
 const PRINT_AREA_ID     = 'qr-label-print-area'
 const LOC_PRINT_AREA_ID = 'qr-label-loc-print-area'
+const LS_SLOT_DEFAULTS  = 'qr-label-slot-defaults'
 
+function loadSavedDefaults(): Partial<Record<LabelTemplate, ClassicSlot[]>> {
+  try {
+    const raw = localStorage.getItem(LS_SLOT_DEFAULTS)
+    return raw ? JSON.parse(raw) : {}
+  } catch { return {} }
+}
 
 type Tab = 'spools' | 'locations'
 
@@ -514,10 +521,12 @@ export default function QrLabelsPage() {
   const [template,     setTemplate]     = useState<LabelTemplate>('classic-badge')
   const [columns,      setColumns]      = useState<2 | 3 | 4>(3)
   const [encoding,     setEncoding]     = useState<QrEncoding>('url')
-  const [showFieldCfg,  setShowFieldCfg]  = useState(false)
-  const [previewScale,  setPreviewScale]  = useState(2)
-  const [templateSlots, setTemplateSlots] = useState<Partial<Record<LabelTemplate, ClassicSlot[]>>>({})
-  const [locSelected,   setLocSelected]  = useState<Set<number>>(new Set())
+  const [showFieldCfg,   setShowFieldCfg]   = useState(false)
+  const [previewScale,   setPreviewScale]   = useState(2)
+  const [locPreviewScale, setLocPreviewScale] = useState(2)
+  const [templateSlots,  setTemplateSlots]  = useState<Partial<Record<LabelTemplate, ClassicSlot[]>>>(loadSavedDefaults)
+  const [locSelected,    setLocSelected]    = useState<Set<number>>(new Set())
+  const [savedDefault,   setSavedDefault]   = useState(false)
 
   const [exporting, setExporting] = useState(false)
 
@@ -557,13 +566,25 @@ export default function QrLabelsPage() {
   function selectAllLocs()  { setLocSelected(new Set(locations.map((l) => l.id))) }
   function selectNoneLocs() { setLocSelected(new Set()) }
 
-  const currentSlots = templateSlots[template] ?? TEMPLATE_DEFAULT_SLOTS[template]
+  const savedDefaults = loadSavedDefaults()
+  const currentSlots = templateSlots[template] ?? savedDefaults[template] ?? TEMPLATE_DEFAULT_SLOTS[template]
+
   function updateSlots(newSlots: ClassicSlot[]) {
     setTemplateSlots((prev) => ({ ...prev, [template]: newSlots }))
   }
   function resetSlots() {
     setTemplateSlots((prev) => { const next = { ...prev }; delete next[template]; return next })
   }
+  function saveAsDefault() {
+    const next = { ...loadSavedDefaults(), [template]: currentSlots }
+    localStorage.setItem(LS_SLOT_DEFAULTS, JSON.stringify(next))
+    setSavedDefault(true)
+  }
+  useEffect(() => {
+    if (!savedDefault) return
+    const t = setTimeout(() => setSavedDefault(false), 2000)
+    return () => clearTimeout(t)
+  }, [savedDefault])
 
   const activeEntry = TEMPLATES.find((t) => t.value === template)!
 
@@ -916,14 +937,29 @@ export default function QrLabelsPage() {
                   <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
                     {activeEntry.label} — data slots
                   </p>
-                  {templateSlots[template] && (
+                  <div className="flex items-center gap-3">
+                    {templateSlots[template] && (
+                      <button
+                        onClick={resetSlots}
+                        className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+                      >
+                        Reset to defaults
+                      </button>
+                    )}
                     <button
-                      onClick={resetSlots}
-                      className="text-[10px] text-gray-500 hover:text-gray-300 transition-colors"
+                      onClick={saveAsDefault}
+                      className={`flex items-center gap-1 text-[10px] font-medium transition-colors
+                        ${savedDefault
+                          ? 'text-green-400'
+                          : 'text-primary-400 hover:text-primary-300'
+                        }`}
                     >
-                      Reset to defaults
+                      {savedDefault
+                        ? <><Check className="h-3 w-3" /> Saved</>
+                        : <><Save className="h-3 w-3" /> Save as default</>
+                      }
                     </button>
-                  )}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   {currentSlots.map((slot, i) => (
@@ -990,12 +1026,32 @@ export default function QrLabelsPage() {
         ) : (
           <>
             {/* Locations toolbar */}
-            <div className="flex flex-wrap items-center gap-4 px-5 py-4 border-b border-surface-border bg-surface-1 shrink-0">
-              <div className="flex items-center gap-2 text-sm text-gray-400">
+            <div className="flex flex-wrap items-start gap-4 px-5 py-4 border-b border-surface-border bg-surface-1 shrink-0">
+              <div className="flex items-center gap-2 text-sm text-gray-400 self-center">
                 <MapPin className="h-4 w-4" />
                 Location QR codes link to the public location page (no login required)
               </div>
-              <div className="ml-auto">
+
+              <div className="flex flex-col gap-1">
+                <p className="text-xs text-gray-500">Preview size</p>
+                <div className="flex gap-1">
+                  {[1, 1.5, 2, 2.5].map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setLocPreviewScale(s)}
+                      className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors
+                        ${locPreviewScale === s
+                          ? 'bg-primary-600 text-white'
+                          : 'bg-surface-2 text-gray-400 hover:text-white border border-surface-border'
+                        }`}
+                    >
+                      {s}×
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="ml-auto flex items-end">
                 <ExportMenuButton
                   count={selectedLocations.length}
                   disabled={selectedLocations.length === 0}
@@ -1017,7 +1073,18 @@ export default function QrLabelsPage() {
               ) : (
                 <div className="flex flex-wrap gap-4 items-start">
                   {selectedLocations.map((loc) => (
-                    <LocationBadgeLabel key={loc.id} location={loc} forScreen />
+                    <div
+                      key={loc.id}
+                      style={{
+                        width:    LOC_W * locPreviewScale,
+                        height:   LOC_H * locPreviewScale,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      <div style={{ transform: `scale(${locPreviewScale})`, transformOrigin: 'top left' }}>
+                        <LocationBadgeLabel location={loc} forScreen />
+                      </div>
+                    </div>
                   ))}
                 </div>
               )}
