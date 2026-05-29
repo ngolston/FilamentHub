@@ -1,48 +1,107 @@
 /**
- * Pure-canvas label renderer.
- * Draws QR labels directly onto a <canvas> — no DOM capture needed.
+ * Pure-canvas label renderer — no DOM capture needed.
+ *
+ * Resolution strategy (same principle for both QR codes and text):
+ *   • ctx.scale(SCALE, SCALE) is used only for rectangles / image placement.
+ *   • Text and QR codes are generated / drawn at physical-pixel coordinates
+ *     so the browser rasterizer never has to upscale — zero blur.
  */
 
 import type { SpoolResponse, LocationResponse } from '@/types/api'
 import type { LabelTemplate, ClassicSlot, QrEncoding } from './SpoolLabel'
 import { LABEL_PX, CLASSIC_FIELD_LABELS } from './SpoolLabel'
 
-const SCALE = 4   // 4× CSS pixels → ~380 dpi on a 40×30 mm label, crisp for print
+const SCALE = 4   // 4× CSS pixels → ~380 dpi on a 40 × 30 mm label
 
-// ── Font helpers ──────────────────────────────────────────────────────────────
+// ── Font string helpers ───────────────────────────────────────────────────────
 
-async function loadFonts() { await document.fonts.ready }
-
-function font(weight: number, size: number) {
-  return `${weight} ${size}px "Poppins", system-ui, sans-serif`
+function font(weight: number, cssPx: number) {
+  return `${weight} ${cssPx}px "Poppins", system-ui, sans-serif`
 }
-function mono(size: number) {
-  return `${size}px "Courier New", "Lucida Console", monospace`
+function mono(cssPx: number) {
+  return `${cssPx}px "Courier New", "Lucida Console", monospace`
+}
+/** Rewrite a CSS-pixel font string to physical-pixel size. */
+function physFont(f: string): string {
+  return f.replace(/(\d+(?:\.\d+)?)px/, (_, n) => `${parseFloat(n) * SCALE}px`)
 }
 
-// ── Text helpers ──────────────────────────────────────────────────────────────
+// ── Physical-pixel text primitives ────────────────────────────────────────────
+//
+// These mirror the QR-code fix: the source is generated at physical pixels so
+// the canvas draws it 1-to-1, with no upscaling artefacts.
+// Usage: call inside a ctx.scale(SCALE,SCALE) context; helpers temporarily
+// reset the transform, draw at (cssX*SCALE, cssY*SCALE), then restore.
 
-function trunc(ctx: CanvasRenderingContext2D, text: string, maxW: number): string {
-  if (ctx.measureText(text).width <= maxW) return text
+function fillTextSharp(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  cssX: number, cssY: number,
+  fontStr: string,
+  fillStyle: string,
+  baseline: CanvasTextBaseline = 'top',
+  align: CanvasTextAlign = 'left',
+) {
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)          // physical-pixel coordinate space
+  ctx.font         = physFont(fontStr)
+  ctx.fillStyle    = fillStyle
+  ctx.textBaseline = baseline
+  ctx.textAlign    = align
+  ctx.fillText(text, Math.round(cssX * SCALE), Math.round(cssY * SCALE))
+  ctx.restore()
+}
+
+/** Measure text width and return it in CSS pixels. */
+function measureCss(ctx: CanvasRenderingContext2D, text: string, fontStr: string): number {
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.font = physFont(fontStr)
+  const w = ctx.measureText(text).width / SCALE
+  ctx.restore()
+  return w
+}
+
+/** Truncate text so it fits within maxCssW CSS pixels. */
+function truncCss(ctx: CanvasRenderingContext2D, text: string, maxCssW: number, fontStr: string): string {
+  ctx.save()
+  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.font = physFont(fontStr)
+  const maxPhys = maxCssW * SCALE
   let s = text
-  while (s.length > 1 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1)
+  if (ctx.measureText(s).width <= maxPhys) { ctx.restore(); return s }
+  while (s.length > 1 && ctx.measureText(s + '…').width > maxPhys) s = s.slice(0, -1)
+  ctx.restore()
   return s + '…'
 }
 
+// ── Font preload ──────────────────────────────────────────────────────────────
+
+async function loadFonts() {
+  await document.fonts.ready
+  // Force the browser to rasterize every weight + physical size we'll use
+  // so the glyph cache is warm before we start drawing.
+  const weights  = [400, 600, 700, 900]
+  const cssSizes = [6, 6.5, 7, 7.5, 8, 9, 10, 11, 12, 13, 14, 20, 21]
+  await Promise.allSettled(
+    weights.flatMap(w =>
+      cssSizes.map(s =>
+        document.fonts.load(`${w} ${Math.round(s * SCALE)}px "Poppins"`)
+      )
+    )
+  )
+}
+
 // ── QR code helper ────────────────────────────────────────────────────────────
-// Generate at (size × SCALE) physical pixels so the source canvas maps 1-to-1
-// onto the scaled drawing context — zero upscaling, zero blur.
-// Error-correction level H (30 %) produces the densest module grid, giving
-// the richest visual detail while remaining fully scannable.
 
 async function makeQR(value: string, cssPx: number): Promise<HTMLCanvasElement> {
   const QRCode = (await import('qrcode')).default
   const c = document.createElement('canvas')
   await QRCode.toCanvas(c, value, {
-    width: cssPx * SCALE,   // match physical canvas pixels exactly — no upscale
+    width: cssPx * SCALE,   // physical pixels → 1-to-1 draw, no upscaling
     margin: 0,
     color: { dark: '#000000', light: '#ffffff' },
-    errorCorrectionLevel: 'H',  // highest density & robustness
+    errorCorrectionLevel: 'H',
   })
   return c
 }
@@ -80,48 +139,51 @@ function slotText(slot: ClassicSlot, spool: SpoolResponse): string {
   }
 }
 
+/** Evenly-spaced data rows — labels small+gray, values bold+dark. */
 function drawSlotRows(
   ctx: CanvasRenderingContext2D,
   rows: ClassicSlot[], spool: SpoolResponse,
-  x: number, y: number, w: number, h: number,
+  cssX: number, cssY: number, cssW: number, cssH: number,
   compact = false,
 ) {
   if (rows.length === 0) return
-  // Label at a smaller size (gray), value at a slightly larger bold size.
-  // Measuring the label dynamically lets the value use all remaining width
-  // — critical when the left column is narrow next to a large QR code.
-  const labelFs = compact ? 6 : 6.5
+  const labelFs = compact ? 6   : 6.5
   const valFs   = compact ? 7.5 : 8
-  const rowH    = h / rows.length
+  const labelF  = font(400, labelFs)
+  const valF    = font(700, valFs)
+  const rowH    = cssH / rows.length
 
   rows.forEach((slot, i) => {
     const label = CLASSIC_FIELD_LABELS[slot.field] ?? ''
     const value = slotText(slot, spool)
-    const ry    = y + i * rowH + (rowH - valFs) / 2
+    const ry    = cssY + i * rowH + (rowH - valFs) / 2
 
-    let labelW = 0
+    let labelCssW = 0
     if (label) {
-      ctx.font = font(400, labelFs); ctx.fillStyle = '#9ca3af'; ctx.textBaseline = 'top'
-      // Vertically centre the smaller label text against the taller value text
-      ctx.fillText(label, x, ry + (valFs - labelFs) / 2)
-      labelW = ctx.measureText(label).width + 3
+      fillTextSharp(ctx, label, cssX, ry + (valFs - labelFs) / 2, labelF, '#9ca3af', 'top', 'left')
+      labelCssW = measureCss(ctx, label, labelF) + 3
     }
 
-    ctx.font = font(700, valFs); ctx.fillStyle = '#1f2937'
-    ctx.fillText(trunc(ctx, value, w - labelW), x + labelW, ry)
+    const valText = truncCss(ctx, value, cssW - labelCssW, valF)
+    fillTextSharp(ctx, valText, cssX + labelCssW, ry, valF, '#1f2937', 'top', 'left')
   })
 }
 
+/** Horizontal fill percentage bar. */
 function drawFillBar(
   ctx: CanvasRenderingContext2D,
   pct: number, hex: string | null,
-  x: number, y: number, w: number, h: number,
+  cssX: number, cssY: number, cssW: number, cssH: number,
 ) {
-  ctx.fillStyle = '#e5e7eb'; ctx.beginPath(); ctx.roundRect(x, y, w, h, h / 2); ctx.fill()
-  const fw = (w * Math.min(pct, 100)) / 100
-  if (fw > 0) { ctx.fillStyle = hex ?? '#6366f1'; ctx.beginPath(); ctx.roundRect(x, y, fw, h, h / 2); ctx.fill() }
-  ctx.font = font(600, 7); ctx.fillStyle = '#4b5563'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right'
-  ctx.fillText(`${pct.toFixed(0)}%`, x + w + 14, y + h / 2); ctx.textAlign = 'left'
+  ctx.fillStyle = '#e5e7eb'
+  ctx.beginPath(); ctx.roundRect(cssX, cssY, cssW, cssH, cssH / 2); ctx.fill()
+  const fw = (cssW * Math.min(pct, 100)) / 100
+  if (fw > 0) {
+    ctx.fillStyle = hex ?? '#6366f1'
+    ctx.beginPath(); ctx.roundRect(cssX, cssY, fw, cssH, cssH / 2); ctx.fill()
+  }
+  const pctF = font(600, 7)
+  fillTextSharp(ctx, `${pct.toFixed(0)}%`, cssX + cssW + 14, cssY + cssH / 2, pctF, '#4b5563', 'middle', 'right')
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -129,11 +191,6 @@ function drawFillBar(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── 1. Classic Badge (151×113 = 40×30mm) ─────────────────────────────────────
-// Layout matches the reference design:
-//   • Brand name — very large, uppercase, dominates the top
-//   • Material bar — partial width; hex code sits OUTSIDE the bar to the right
-//   • Color name — large, bold, fully visible above the QR
-//   • QR + data rows — start at the same Y, QR on the right, rows on the left
 
 async function drawClassicBadge(
   ctx: CanvasRenderingContext2D,
@@ -150,69 +207,45 @@ async function drawClassicBadge(
   const hasFill   = slots.some(s => s.enabled && s.field === 'fill_bar')
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
-  ctx.textBaseline = 'top'
 
-  // ── 1. Brand name ─────────────────────────────────────────────────
-  // Large, bold, uppercase — the dominant visual element
-  const brandFs = 20
-  ctx.font = font(900, brandFs); ctx.fillStyle = '#000000'
-  ctx.fillText(trunc(ctx, brand, w - 6), 4, 3)
-  let y = 3 + brandFs + 3   // = 26
+  // Brand name
+  const F_brand = font(900, 20)
+  fillTextSharp(ctx, truncCss(ctx, brand, w - 6, F_brand), 4, 3, F_brand, '#000000')
+  let y = 3 + 20 + 3   // = 26
 
-  // ── 2. Material bar (partial width) + hex outside ─────────────────
-  // The dark bar only covers the material text; the hex code sits in
-  // the white space to the right of the bar at the same vertical level.
+  // Material bar (partial) + hex outside
   const barH   = 15
-  const matStr = `${mat}${diam}`
-  ctx.font = mono(9.5)
-  const hexMeasure = hex ? ctx.measureText(hex).width : 0
-  const hexAreaW   = hex ? hexMeasure + 8 : 0
-  const barW       = w - hexAreaW - 4
+  const F_hex  = mono(9.5)
+  const F_mat  = font(700, 9)
+  const hexW   = hex ? measureCss(ctx, hex, F_hex) + 8 : 0
+  const barW   = w - hexW - 4
 
-  ctx.fillStyle = '#111111'
-  ctx.fillRect(0, y, barW, barH)
-
-  // Material text inside the dark bar
-  ctx.font = font(700, 9); ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'middle'
-  ctx.fillText(trunc(ctx, matStr, barW - 10), 5, y + barH / 2)
-
-  // Hex code in white space to the right of the bar
-  if (hex) {
-    ctx.font = mono(9.5); ctx.fillStyle = '#000000'
-    ctx.fillText(hex, barW + 4, y + barH / 2)
-  }
-  ctx.textBaseline = 'top'
+  ctx.fillStyle = '#111111'; ctx.fillRect(0, y, barW, barH)
+  fillTextSharp(ctx, truncCss(ctx, `${mat}${diam}`, barW - 10, F_mat), 5, y + (barH - 9) / 2, F_mat, '#ffffff', 'top', 'left')
+  if (hex) fillTextSharp(ctx, hex, barW + 4, y + barH / 2, F_hex, '#000000', 'middle', 'left')
   y += barH + 3   // = 44
 
-  // ── 3. Color name ─────────────────────────────────────────────────
-  // Prominent — takes from filament profile color_name if available
-  const colorFs = 14
-  ctx.font = font(700, colorFs); ctx.fillStyle = '#000000'
-  ctx.fillText(trunc(ctx, colorName, w - 6), 4, y)
-  y += colorFs + 5   // = 63
+  // Color name
+  const F_color = font(700, 14)
+  fillTextSharp(ctx, truncCss(ctx, colorName, w - 6, F_color), 4, y, F_color, '#000000')
+  y += 14 + 5   // = 63
 
-  // ── 4. QR + data rows (both start at y) ──────────────────────────
-  // QR is bottom-right; data rows occupy the left column beside it.
-  // The QR fills exactly the remaining height so nothing is clipped.
+  // QR + data rows
   const botPad = 4
-  const qrSize = h - y - botPad   // uses every remaining pixel
+  const qrSize = h - y - botPad
   const qrX    = w - botPad - qrSize
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, qrX, y, qrSize, qrSize)
 
-  // Left column — width from left edge to QR with a 3px gap
   const colW = qrX - 3 - 4
-  const colH = qrSize
-
   if (hasFill && rows.length === 0) {
-    drawFillBar(ctx, spool.fill_percentage, hex, 4, y + colH - 5, colW, 5)
+    drawFillBar(ctx, spool.fill_percentage, hex, 4, y + qrSize - 5, colW, 5)
   } else {
-    drawSlotRows(ctx, rows, spool, 4, y, colW, colH, true)
+    drawSlotRows(ctx, rows, spool, 4, y, colW, qrSize, true)
   }
 }
 
 // ── 2. Wide Card (189×113 = 50×30mm) ─────────────────────────────────────────
-// QR: 62px (was 36) — right column spans full content height
 
 async function drawWideCard(
   ctx: CanvasRenderingContext2D,
@@ -227,40 +260,30 @@ async function drawWideCard(
   const hasFill = slots.some(s => s.enabled && s.field === 'fill_bar')
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
-  ctx.textBaseline = 'top'
-
-  // Left color stripe
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 8, h)
 
-  // QR — 62px, right side, vertically centered
   const qrSize = 62
-  const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
   const qrX    = w - 6 - qrSize
-  const qrY    = (h - qrSize) / 2
-  ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
+  const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
+  ctx.drawImage(qrImg, qrX, (h - qrSize) / 2, qrSize, qrSize)
 
-  // Text column (left of QR)
-  const textX  = 10
-  const textW  = qrX - 4 - textX   // gap from QR
+  const textX = 10
+  const textW = qrX - 4 - textX
 
   if (brand) {
-    ctx.font = font(400, 7); ctx.fillStyle = '#9ca3af'
-    ctx.fillText(trunc(ctx, brand.toUpperCase(), textW), textX, 8)
+    const F = font(400, 7)
+    fillTextSharp(ctx, truncCss(ctx, brand.toUpperCase(), textW, F), textX, 8, F, '#9ca3af')
   }
-  ctx.font = font(700, 11); ctx.fillStyle = '#111827'
-  ctx.fillText(trunc(ctx, name, textW), textX, brand ? 17 : 10)
+  const F_name = font(700, 11)
+  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, brand ? 17 : 10, F_name, '#111827')
 
   const dataY = brand ? 30 : 24
   const dataH = h - dataY - (hasFill ? 14 : 6)
   drawSlotRows(ctx, rows, spool, textX, dataY, textW, dataH, true)
-
-  if (hasFill) {
-    drawFillBar(ctx, spool.fill_percentage, hex, textX, h - 10, textW, 5)
-  }
+  if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, textX, h - 10, textW, 5)
 }
 
 // ── 3. Slim Tag (151×91 = 40×24mm) ───────────────────────────────────────────
-// QR: 58px (was 42)
 
 async function drawSlimTag(
   ctx: CanvasRenderingContext2D,
@@ -276,35 +299,28 @@ async function drawSlimTag(
   const hasFill = slots.some(s => s.enabled && s.field === 'fill_bar')
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
-  ctx.textBaseline = 'top'
 
-  // Colored header bar (8px)
   const hdrH = 8
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, w, hdrH)
-  ctx.font = font(600, 7); ctx.fillStyle = 'rgba(255,255,255,0.9)'
-  if (brand) ctx.fillText(trunc(ctx, brand, (w / 2) - 6), 6, 1)
-  ctx.textAlign = 'right'
-  ctx.fillText(trunc(ctx, mat, (w / 2) - 6), w - 4, 1)
-  ctx.textAlign = 'left'
+  const F_hdr = font(600, 7)
+  if (brand) fillTextSharp(ctx, truncCss(ctx, brand, (w / 2) - 6, F_hdr), 6, 1, F_hdr, 'rgba(255,255,255,0.9)')
+  fillTextSharp(ctx, truncCss(ctx, mat, (w / 2) - 6, F_hdr), w - 4, 1, F_hdr, 'rgba(255,255,255,0.9)', 'top', 'right')
 
-  // Body: QR left (58px), text right
-  const qrSize  = 58
-  const bodyY   = hdrH + 2
-  const bodyH   = h - bodyY - (hasFill ? 12 : 4)
-  const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
+  const qrSize = 58
+  const bodyY  = hdrH + 2
+  const bodyH  = h - bodyY - (hasFill ? 12 : 4)
+  const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, 4, bodyY + (bodyH - qrSize) / 2, qrSize, qrSize)
 
   const textX = 4 + qrSize + 4
   const textW = w - textX - 4
-  ctx.font = font(700, 10); ctx.fillStyle = '#111827'
-  ctx.fillText(trunc(ctx, name, textW), textX, bodyY + 2)
+  const F_name = font(700, 10)
+  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, bodyY + 2, F_name, '#111827')
   drawSlotRows(ctx, rows, spool, textX, bodyY + 14, textW, bodyH - 14, true)
-
   if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, 4, h - 10, w - 8, 4)
 }
 
 // ── 4. Micro Strip (151×45 = 40×12mm) ────────────────────────────────────────
-// QR: 38px (was 28) — very constrained by label height
 
 async function drawMicroStrip(
   ctx: CanvasRenderingContext2D,
@@ -318,12 +334,8 @@ async function drawMicroStrip(
   const textSlot = slots.find(s => s.enabled && s.field !== 'fill_bar' && s.field !== 'none')
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
-  ctx.textBaseline = 'middle'
-
-  // Left stripe
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 6, h)
 
-  // QR — 38px (fits within 45px height with 3.5px margin each side)
   const qrSize = 38
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, 8, (h - qrSize) / 2, qrSize, qrSize)
@@ -332,18 +344,16 @@ async function drawMicroStrip(
   const fillW = hasFill ? 56 : 0
   const textW = w - textX - fillW - 4
 
-  ctx.font = font(700, 8); ctx.fillStyle = '#111827'
-  ctx.fillText(trunc(ctx, name, textW), textX, h / 2 - 4)
+  const F_name = font(700, 8)
+  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), textX, h / 2 - 4, F_name, '#111827', 'middle')
   if (textSlot) {
-    ctx.font = font(400, 7); ctx.fillStyle = '#6b7280'
-    ctx.fillText(trunc(ctx, slotText(textSlot, spool), textW), textX, h / 2 + 5)
+    const F_sec = font(400, 7)
+    fillTextSharp(ctx, truncCss(ctx, slotText(textSlot, spool), textW, F_sec), textX, h / 2 + 5, F_sec, '#6b7280', 'middle')
   }
-
   if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, w - fillW - 2, h / 2 - 3, fillW - 12, 5)
 }
 
 // ── 5. Square Classic (151×113 = 40×30mm) ────────────────────────────────────
-// QR: 65px (was 46) — centered between header and footer
 
 async function drawSquareClassic(
   ctx: CanvasRenderingContext2D,
@@ -359,41 +369,33 @@ async function drawSquareClassic(
   const hasFill = slots.some(s => s.enabled && s.field === 'fill_bar')
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
-  ctx.textBaseline = 'top'
-
-  // Left stripe
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 8, h)
 
   const cx    = 8 + (w - 8) / 2
   const textW = w - 8 - 16
 
-  // Compact header: brand + name + material (~32px total)
-  ctx.font = font(400, 7); ctx.fillStyle = '#9ca3af'; ctx.textAlign = 'center'
-  if (brand) ctx.fillText(trunc(ctx, brand.toUpperCase(), textW), cx, 4)
-  ctx.font = font(700, 11); ctx.fillStyle = '#111827'
-  ctx.fillText(trunc(ctx, name, textW), cx, brand ? 13 : 6)
-  ctx.font = font(400, 7.5); ctx.fillStyle = '#6b7280'
-  ctx.fillText(trunc(ctx, mat, textW), cx, brand ? 27 : 20)
-  ctx.textAlign = 'left'
+  if (brand) {
+    const F = font(400, 7)
+    fillTextSharp(ctx, truncCss(ctx, brand.toUpperCase(), textW, F), cx, 4, F, '#9ca3af', 'top', 'center')
+  }
+  const F_name = font(700, 11)
+  fillTextSharp(ctx, truncCss(ctx, name, textW, F_name), cx, brand ? 13 : 6, F_name, '#111827', 'top', 'center')
+  const F_mat = font(400, 7.5)
+  fillTextSharp(ctx, truncCss(ctx, mat, textW, F_mat), cx, brand ? 27 : 20, F_mat, '#6b7280', 'top', 'center')
   const headerEnd = brand ? 38 : 30
 
-  // Footer height
   const footerH = (rows.length > 0 ? rows.length * 9 : 0) + (hasFill ? 10 : 0) + 6
   const footerY = h - footerH
-
-  // QR — 65px, centered in middle zone
-  const midH   = footerY - headerEnd
-  const qrSize = 65
-  const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
+  const midH    = footerY - headerEnd
+  const qrSize  = 65
+  const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, cx - qrSize / 2, headerEnd + (midH - qrSize) / 2, qrSize, qrSize)
 
-  // Footer
   if (rows.length > 0) drawSlotRows(ctx, rows, spool, 10, footerY, textW, rows.length * 9, true)
   if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, 10, h - 10, textW, 4)
 }
 
 // ── 6. Tall Card (113×151 = 30×40mm) ─────────────────────────────────────────
-// QR: 78px (was 52)
 
 async function drawTallCard(
   ctx: CanvasRenderingContext2D,
@@ -410,31 +412,22 @@ async function drawTallCard(
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
 
-  // Colored header
   const hdrH = 20
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, w, hdrH)
-  ctx.font = font(600, 7); ctx.fillStyle = 'rgba(255,255,255,0.9)'
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-  ctx.fillText(brand ? `◉  ${brand}` : '◉', w / 2, hdrH / 2)
-  ctx.textAlign = 'left'
+  const F_hdr = font(600, 7)
+  fillTextSharp(ctx, brand ? `◉  ${brand}` : '◉', w / 2, hdrH / 2, F_hdr, 'rgba(255,255,255,0.9)', 'middle', 'center')
 
-  // Name + material
-  ctx.textBaseline = 'top'
-  ctx.font = font(700, 10); ctx.fillStyle = '#111827'; ctx.textAlign = 'center'
-  ctx.fillText(trunc(ctx, name, w - 12), w / 2, hdrH + 5)
-  ctx.font = font(400, 7); ctx.fillStyle = '#6b7280'
-  ctx.fillText(trunc(ctx, mat, w - 12), w / 2, hdrH + 19)
-  ctx.textAlign = 'left'
+  const F_name = font(700, 10)
+  fillTextSharp(ctx, truncCss(ctx, name, w - 12, F_name), w / 2, hdrH + 5, F_name, '#111827', 'top', 'center')
+  const F_mat = font(400, 7)
+  fillTextSharp(ctx, truncCss(ctx, mat, w - 12, F_mat), w / 2, hdrH + 19, F_mat, '#6b7280', 'top', 'center')
   const headerEnd = hdrH + 30
 
-  // Footer
   const footerH = (rows.length > 0 ? rows.length * 9 : 0) + (hasFill ? 10 : 0) + 6
   const footerY = h - footerH
-
-  // QR — 78px, centered between header and footer
-  const midH   = footerY - headerEnd
-  const qrSize = 78
-  const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
+  const midH    = footerY - headerEnd
+  const qrSize  = 78
+  const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, (w - qrSize) / 2, headerEnd + (midH - qrSize) / 2, qrSize, qrSize)
 
   if (rows.length > 0) drawSlotRows(ctx, rows, spool, 6, footerY, w - 12, rows.length * 9, true)
@@ -442,7 +435,6 @@ async function drawTallCard(
 }
 
 // ── 7. Narrow Portrait (95×151 = 25×40mm) ────────────────────────────────────
-// QR: 72px (was 54)
 
 async function drawNarrowPortrait(
   ctx: CanvasRenderingContext2D,
@@ -456,27 +448,22 @@ async function drawNarrowPortrait(
   const hasFill = slots.some(s => s.enabled && s.field === 'fill_bar')
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
-
-  // Top stripe
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, w, 8)
 
-  // QR — 72px, centered horizontally, just below stripe
   const qrSize = 72
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, (w - qrSize) / 2, 10, qrSize, qrSize)
 
-  const textY = 10 + qrSize + 4
-  ctx.font = font(700, 8); ctx.fillStyle = '#111827'
-  ctx.textBaseline = 'top'; ctx.textAlign = 'center'
-  ctx.fillText(trunc(ctx, name, w - 8), w / 2, textY)
+  const textY  = 10 + qrSize + 4
+  const F_name = font(700, 8)
+  fillTextSharp(ctx, truncCss(ctx, name, w - 8, F_name), w / 2, textY, F_name, '#111827', 'top', 'center')
 
   rows.forEach((slot, i) => {
     const value = slotText(slot, spool)
     if (!value || value === '—') return
-    ctx.font = font(400, 7); ctx.fillStyle = '#6b7280'
-    ctx.fillText(trunc(ctx, value, w - 8), w / 2, textY + 12 + i * 9)
+    const F = font(400, 7)
+    fillTextSharp(ctx, truncCss(ctx, value, w - 8, F), w / 2, textY + 12 + i * 9, F, '#6b7280', 'top', 'center')
   })
-  ctx.textAlign = 'left'
 
   if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, 6, h - 10, w - 12, 4)
 }
@@ -485,12 +472,6 @@ async function drawNarrowPortrait(
 // Labelife AML generator
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Wraps a PNG data-URL in a Labelife-compatible `.aml` XML envelope.
- *
- * The AML format (LPAPI v1.6) stores the label as a base64-embedded image
- * inside an XML structure.  All dimensions are in millimetres.
- */
 export function generateAml(
   pngDataUrl: string,
   labelName: string,
@@ -608,74 +589,64 @@ export async function renderLocationLabel(location: LocationResponse): Promise<s
   const ctx     = canvas.getContext('2d')!
   ctx.scale(SCALE, SCALE)
 
-  // Background + border
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.strokeStyle = '#000000'; ctx.lineWidth = 1
   ctx.strokeRect(0.5, 0.5, w - 1, h - 1)
 
-  // Header bar
   const hdrH = 19
   ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, w, hdrH)
-  ctx.font = font(700, 6.5); ctx.fillStyle = '#ffffff'
-  ctx.textBaseline = 'middle'; ctx.textAlign = 'left'
-  ctx.fillText('STORAGE LOCATION', 18, hdrH / 2)
-  ctx.font = font(600, 6); ctx.fillStyle = 'rgba(255,255,255,0.35)'
-  ctx.textAlign = 'right'; ctx.fillText('FH', w - 6, hdrH / 2); ctx.textAlign = 'left'
 
-  // QR — 72px in a 78px right column (was 56px in 66px column)
+  const F_hdr = font(700, 6.5)
+  fillTextSharp(ctx, 'STORAGE LOCATION', 18, hdrH / 2, F_hdr, '#ffffff', 'middle', 'left')
+  fillTextSharp(ctx, 'FH', w - 6, hdrH / 2, font(600, 6), 'rgba(255,255,255,0.35)', 'middle', 'right')
+
   const qrColW = 78
   const qrSize = 72
-  const qrURL  = `${window.location.origin}/l/${location.id}`
-  const qrImg  = await makeQR(qrURL, qrSize)
   const footH  = 13
   const bodyH  = h - hdrH - footH
+  const qrURL  = `${window.location.origin}/l/${location.id}`
+  const qrImg  = await makeQR(qrURL, qrSize)
   ctx.drawImage(qrImg, w - qrColW + (qrColW - qrSize) / 2, hdrH + (bodyH - qrSize) / 2, qrSize, qrSize)
 
-  // Vertical divider
   ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1
   ctx.beginPath(); ctx.moveTo(w - qrColW, hdrH); ctx.lineTo(w - qrColW, h - footH); ctx.stroke()
 
-  // Info column
   const infoW = w - qrColW - 14
   let cy = hdrH + 5
-  ctx.textBaseline = 'top'
-  ctx.font = font(900, 12); ctx.fillStyle = '#000000'
 
-  // Word-wrap name (up to 2 lines)
+  // Word-wrap location name (up to 2 lines)
+  const F_locName = font(900, 12)
   const words = location.name.split(' ')
   let line1 = '', line2 = ''
   for (const word of words) {
     const test = line1 ? `${line1} ${word}` : word
-    if (ctx.measureText(test).width <= infoW) { line1 = test }
+    if (measureCss(ctx, test, F_locName) <= infoW) { line1 = test }
     else if (!line2) { line2 = word }
-    else { line2 = trunc(ctx, `${line2} ${word}`, infoW) }
+    else { line2 = truncCss(ctx, `${line2} ${word}`, infoW, F_locName) }
   }
-  ctx.fillText(line1, 7, cy); cy += 14
-  if (line2) { ctx.fillText(trunc(ctx, line2, infoW), 7, cy); cy += 14 }
+  fillTextSharp(ctx, line1, 7, cy, F_locName, '#000000'); cy += 14
+  if (line2) { fillTextSharp(ctx, truncCss(ctx, line2, infoW, F_locName), 7, cy, F_locName, '#000000'); cy += 14 }
 
   ctx.fillStyle = '#d1d5db'; ctx.fillRect(7, cy, infoW, 1); cy += 5
 
-  ctx.font = font(500, 7.5); ctx.fillStyle = '#374151'
-  ctx.fillText(`${location.spool_count} spool${location.spool_count !== 1 ? 's' : ''}`, 13, cy); cy += 11
+  const F_count = font(500, 7.5)
+  fillTextSharp(ctx, `${location.spool_count} spool${location.spool_count !== 1 ? 's' : ''}`, 13, cy, F_count, '#374151')
+  cy += 11
 
   if (location.is_dry_box) {
     ctx.strokeStyle = '#000'; ctx.lineWidth = 0.8
     ctx.strokeRect(7, cy, 32, 9)
-    ctx.font = font(800, 6); ctx.fillStyle = '#000'
-    ctx.fillText('DRY BOX', 9, cy + 1.5); cy += 12
+    fillTextSharp(ctx, 'DRY BOX', 9, cy + 1.5, font(800, 6), '#000000')
+    cy += 12
   }
 
   if (location.description) {
-    ctx.font = font(400, 6.5); ctx.fillStyle = '#6b7280'
-    ctx.fillText(trunc(ctx, location.description, infoW), 7, cy)
+    fillTextSharp(ctx, truncCss(ctx, location.description, infoW, font(400, 6.5)), 7, cy, font(400, 6.5), '#6b7280')
   }
 
-  // Footer bar
   ctx.fillStyle = '#111111'; ctx.fillRect(0, h - footH, w, footH)
-  ctx.font = mono(6.5); ctx.fillStyle = 'rgba(255,255,255,0.6)'
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-  ctx.fillText(`LOC-${location.id}`, w / 2, h - footH / 2)
-  ctx.textAlign = 'left'
+  const F_foot = mono(6.5)
+  fillTextSharp(ctx, `LOC-${location.id}`, w / 2, h - footH / 2, F_foot, 'rgba(255,255,255,0.6)', 'middle', 'center')
 
   return canvas.toDataURL('image/png')
 }
