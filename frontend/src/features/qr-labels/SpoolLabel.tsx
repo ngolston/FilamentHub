@@ -17,7 +17,7 @@ export type QrEncoding = 'url' | 'id' | 'summary'
 
 export type ClassicFieldOption =
   | 'nozzle' | 'bed' | 'id' | 'color'
-  | 'fill' | 'fill_bar' | 'weight' | 'material' | 'diameter' | 'brand' | 'name' | 'none'
+  | 'fill' | 'fill_bar' | 'weight' | 'material' | 'diameter' | 'brand' | 'name' | 'color_family' | 'none'
 
 export interface ClassicSlot {
   field:   ClassicFieldOption
@@ -35,8 +35,9 @@ export const CLASSIC_FIELD_OPTIONS: { value: ClassicFieldOption; label: string }
   { value: 'material', label: 'Material' },
   { value: 'diameter', label: 'Diameter' },
   { value: 'brand',    label: 'Brand' },
-  { value: 'name',     label: 'Spool Name' },
-  { value: 'none',     label: '— None —' },
+  { value: 'name',         label: 'Spool Name' },
+  { value: 'color_family', label: 'Color Family' },
+  { value: 'none',         label: '— None —' },
 ]
 
 export const CLASSIC_FIELD_LABELS: Record<ClassicFieldOption, string> = {
@@ -50,8 +51,9 @@ export const CLASSIC_FIELD_LABELS: Record<ClassicFieldOption, string> = {
   material: 'Material:',
   diameter: 'Diameter:',
   brand:    'Brand:',
-  name:     'Name:',
-  none:     '',
+  name:         'Name:',
+  color_family: 'Color:',
+  none:         '',
 }
 
 export const TEMPLATE_DEFAULT_SLOTS: Record<LabelTemplate, ClassicSlot[]> = {
@@ -141,8 +143,9 @@ function getSlotValue(field: ClassicFieldOption, spool: SpoolResponse): ReactNod
     case 'material': return fp?.material ?? '—'
     case 'diameter': return fp?.diameter ? `${fp.diameter}mm` : '—'
     case 'brand':    return fp?.brand?.name ?? spool.brand?.name ?? '—'
-    case 'name':     return spool.name ?? fp?.name ?? '—'
-    case 'none':     return null
+    case 'name':         return spool.name ?? fp?.name ?? '—'
+    case 'color_family': return fp?.color_name ?? '—'
+    case 'none':         return null
   }
 }
 
