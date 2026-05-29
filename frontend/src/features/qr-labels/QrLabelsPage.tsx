@@ -5,11 +5,10 @@ import { QRCodeSVG } from 'qrcode.react'
 import {
   Printer, CheckSquare, Square, QrCode,
   LayoutGrid, ChevronDown, Info, MapPin,
-  FileImage, FileDown, X,
+  FileImage, FileDown,
 } from 'lucide-react'
 import { spoolsApi } from '@/api/spools'
 import { locationsApi } from '@/api/locations'
-import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Toggle } from '@/components/ui/Toggle'
 import { SpoolLabel, LABEL_PX, CLASSIC_FIELD_OPTIONS, CLASSIC_FIELD_LABELS, TEMPLATE_DEFAULT_SLOTS } from './SpoolLabel'
