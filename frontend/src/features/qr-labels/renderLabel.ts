@@ -7,7 +7,7 @@ import type { SpoolResponse, LocationResponse } from '@/types/api'
 import type { LabelTemplate, ClassicSlot, QrEncoding } from './SpoolLabel'
 import { LABEL_PX, CLASSIC_FIELD_LABELS } from './SpoolLabel'
 
-const SCALE = 3
+const SCALE = 4   // 4× CSS pixels → ~380 dpi on a 40×30 mm label, crisp for print
 
 // ── Font helpers ──────────────────────────────────────────────────────────────
 
@@ -124,71 +124,85 @@ function drawFillBar(
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── 1. Classic Badge (151×113 = 40×30mm) ─────────────────────────────────────
-// QR: 65px — right side, spans the full content area height.
-// Left column: spool name (compact) + all data rows stacked below.
-// Labels rendered at 6px (gray), values at 7.5px (bold) with dynamic width
-// allocation so even long values like "250–280°C" have room to breathe.
+// Layout matches the reference design:
+//   • Brand name — very large, uppercase, dominates the top
+//   • Material bar — partial width; hex code sits OUTSIDE the bar to the right
+//   • Color name — large, bold, fully visible above the QR
+//   • QR + data rows — start at the same Y, QR on the right, rows on the left
 
 async function drawClassicBadge(
   ctx: CanvasRenderingContext2D,
   spool: SpoolResponse, slots: ClassicSlot[], enc: QrEncoding,
   w: number, h: number,
 ) {
-  const fp    = spool.filament
-  const hex   = fp?.color_hex ?? spool.color_hex ?? null
-  const brand = (fp?.brand?.name ?? spool.brand?.name ?? 'Unknown').toUpperCase()
-  const mat   = `${fp?.material ?? '—'}${fp?.diameter ? ` · ${fp.diameter}mm` : ''}`
-  const name  = spool.name ?? fp?.name ?? '—'
-  const rows  = slots.filter(s => s.enabled && s.field !== 'none' && s.field !== 'fill_bar')
-  const hasFill = slots.some(s => s.enabled && s.field === 'fill_bar')
+  const fp        = spool.filament
+  const hex       = fp?.color_hex ?? spool.color_hex ?? null
+  const brand     = (fp?.brand?.name ?? spool.brand?.name ?? 'Unknown').toUpperCase()
+  const mat       = fp?.material ?? '—'
+  const diam      = fp?.diameter ? `/${fp.diameter}mm` : ''
+  const colorName = fp?.color_name ?? spool.name ?? hex ?? '—'
+  const rows      = slots.filter(s => s.enabled && s.field !== 'none' && s.field !== 'fill_bar')
+  const hasFill   = slots.some(s => s.enabled && s.field === 'fill_bar')
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.textBaseline = 'top'
 
-  // ── Brand strip ───────────────────────────────────────────────────
-  ctx.font = font(900, 12); ctx.fillStyle = '#111827'
-  ctx.fillText(trunc(ctx, brand, w - 16), 8, 4)
-  const afterBrand = 4 + 12 + 3
+  // ── 1. Brand name ─────────────────────────────────────────────────
+  // Large, bold, uppercase — the dominant visual element
+  const brandFs = 20
+  ctx.font = font(900, brandFs); ctx.fillStyle = '#000000'
+  ctx.fillText(trunc(ctx, brand, w - 6), 4, 3)
+  let y = 3 + brandFs + 3   // = 26
 
-  // ── Material bar ──────────────────────────────────────────────────
-  const barH = 15
-  ctx.fillStyle = '#111827'; ctx.fillRect(0, afterBrand, w, barH)
-  ctx.font = mono(9.5); ctx.fillStyle = '#d1d5db'
-  const hexW = hex ? ctx.measureText(hex).width + 6 : 0
-  if (hex) { ctx.textAlign = 'right'; ctx.fillText(hex, w - 6, afterBrand + 3); ctx.textAlign = 'left' }
-  ctx.font = font(700, 9); ctx.fillStyle = '#ffffff'
-  ctx.fillText(trunc(ctx, mat, w - 14 - hexW), 6, afterBrand + 3)
+  // ── 2. Material bar (partial width) + hex outside ─────────────────
+  // The dark bar only covers the material text; the hex code sits in
+  // the white space to the right of the bar at the same vertical level.
+  const barH   = 15
+  const matStr = `${mat}${diam}`
+  ctx.font = mono(9.5)
+  const hexMeasure = hex ? ctx.measureText(hex).width : 0
+  const hexAreaW   = hex ? hexMeasure + 8 : 0
+  const barW       = w - hexAreaW - 4
 
-  // ── Content area starts here ──────────────────────────────────────
-  const contentY = afterBrand + barH + 2
+  ctx.fillStyle = '#111111'
+  ctx.fillRect(0, y, barW, barH)
 
-  // QR — 65px, right side, spans from contentY to near bottom
+  // Material text inside the dark bar
+  ctx.font = font(700, 9); ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'middle'
+  ctx.fillText(trunc(ctx, matStr, barW - 10), 5, y + barH / 2)
+
+  // Hex code in white space to the right of the bar
+  if (hex) {
+    ctx.font = mono(9.5); ctx.fillStyle = '#000000'
+    ctx.fillText(hex, barW + 4, y + barH / 2)
+  }
+  ctx.textBaseline = 'top'
+  y += barH + 3   // = 44
+
+  // ── 3. Color name ─────────────────────────────────────────────────
+  // Prominent — takes from filament profile color_name if available
+  const colorFs = 14
+  ctx.font = font(700, colorFs); ctx.fillStyle = '#000000'
+  ctx.fillText(trunc(ctx, colorName, w - 6), 4, y)
+  y += colorFs + 5   // = 63
+
+  // ── 4. QR + data rows (both start at y) ──────────────────────────
+  // QR is bottom-right; data rows occupy the left column beside it.
+  // The QR fills exactly the remaining height so nothing is clipped.
   const botPad = 4
-  const qrSize = 65
-  const qrX    = w - botPad - qrSize        // x=82
-  const qrY    = contentY                    // top-aligned with content
+  const qrSize = h - y - botPad   // uses every remaining pixel
+  const qrX    = w - botPad - qrSize
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
+  ctx.drawImage(qrImg, qrX, y, qrSize, qrSize)
 
-  // ── Left column ───────────────────────────────────────────────────
-  // Width = from left pad to QR with a small gap: 151-4-65-4-8 = 70px
-  const colX = 8
-  const colW = qrX - 4 - colX              // 70px
-
-  // Spool name — compact single line above the data rows
-  ctx.font = font(700, 8); ctx.fillStyle = '#1f2937'
-  ctx.fillText(trunc(ctx, name, colW), colX, contentY + 1)
-  const nameH = 10   // 8px text + 2px gap
-
-  // Data rows fill the rest of the left column, aligned to QR bottom
-  const rowsY = contentY + nameH
-  const rowsH = qrY + qrSize - rowsY - botPad
+  // Left column — width from left edge to QR with a 3px gap
+  const colW = qrX - 3 - 4
+  const colH = qrSize
 
   if (hasFill && rows.length === 0) {
-    drawFillBar(ctx, spool.fill_percentage, hex, colX, rowsY + rowsH - 5, colW, 5)
+    drawFillBar(ctx, spool.fill_percentage, hex, 4, y + colH - 5, colW, 5)
   } else {
-    // compact=true → 6px labels, 7.5px values — fits all text in 70px column
-    drawSlotRows(ctx, rows, spool, colX, rowsY, colW, rowsH, true)
+    drawSlotRows(ctx, rows, spool, 4, y, colW, colH, true)
   }
 }
 
