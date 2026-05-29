@@ -261,7 +261,7 @@ async function drawClassicBadge(
   const bodyTop = barTop + barH + 4
 
   // QR — right column (px-1.5 = 6px padding each side, pt-1 pb-1.5 vertical padding)
-  const qrSize  = 62
+  const qrSize  = 56
   const qrPadX  = 6
   const qrColW  = qrSize + qrPadX * 2
   const qrX     = w - qrColW + qrPadX
@@ -299,7 +299,7 @@ async function drawWideCard(
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 8, h)
 
   // QR — right column (px-2 = 8px pad each side)
-  const qrSize = 68
+  const qrSize = 61
   const qrPadX = 8
   const qrColW = qrSize + qrPadX * 2
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
@@ -347,7 +347,7 @@ async function drawSlimTag(
   if (brand) fillTextSharp(ctx, truncCss(ctx, brand, (w / 2) - 6, F_hdr), 6, 1, F_hdr, 'rgba(255,255,255,0.9)')
   fillTextSharp(ctx, truncCss(ctx, mat, (w / 2) - 6, F_hdr), w - 4, 1, F_hdr, 'rgba(255,255,255,0.9)', 'top', 'right')
 
-  const qrSize = 56
+  const qrSize = 50
   const bodyY  = hdrH + 2
   const bodyH  = h - bodyY - (hasFill ? 12 : 4)
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
@@ -377,7 +377,7 @@ async function drawMicroStrip(
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 6, h)
 
-  const qrSize = 36
+  const qrSize = 32
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, 8, (h - qrSize) / 2, qrSize, qrSize)
 
@@ -428,7 +428,7 @@ async function drawSquareClassic(
   const footerH = (rows.length > 0 ? rows.length * 9 : 0) + (hasFill ? 10 : 0) + 6
   const footerY = h - footerH
   const midH    = footerY - headerEnd
-  const qrSize  = 54
+  const qrSize  = 49
   const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, cx - qrSize / 2, headerEnd + (midH - qrSize) / 2, qrSize, qrSize)
 
@@ -467,7 +467,7 @@ async function drawTallCard(
   const footerH = (rows.length > 0 ? rows.length * 9 : 0) + (hasFill ? 10 : 0) + 6
   const footerY = h - footerH
   const midH    = footerY - headerEnd
-  const qrSize  = 64
+  const qrSize  = 58
   const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, (w - qrSize) / 2, headerEnd + (midH - qrSize) / 2, qrSize, qrSize)
 
@@ -491,7 +491,7 @@ async function drawNarrowPortrait(
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, w, 8)
 
-  const qrSize = 68
+  const qrSize = 61
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, (w - qrSize) / 2, 10, qrSize, qrSize)
 

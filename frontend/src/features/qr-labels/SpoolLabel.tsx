@@ -258,7 +258,7 @@ function ClassicBadgeLabel({ spool, encoding, slots }: TemplateProps) {
           </div>
         </div>
         <div className="flex items-center justify-center px-1.5 pt-1 pb-1.5 shrink-0">
-          <QRCodeSVG value={qrValue(spool, encoding)} size={62} level="M" />
+          <QRCodeSVG value={qrValue(spool, encoding)} size={56} level="M" />
         </div>
       </div>
     </div>
@@ -291,7 +291,7 @@ function WideCardLabel({ spool, encoding, slots }: TemplateProps) {
         {hasFillBar && <FillBar pct={spool.fill_percentage} hex={hex} />}
       </div>
       <div className="flex items-center justify-center px-2 shrink-0">
-        <QRCodeSVG value={qrValue(spool, encoding)} size={68} level="M" />
+        <QRCodeSVG value={qrValue(spool, encoding)} size={61} level="M" />
       </div>
     </div>
   )
@@ -324,7 +324,7 @@ function SlimTagLabel({ spool, encoding, slots }: TemplateProps) {
       </div>
       <div className="flex flex-1 min-h-0 gap-1 px-1 py-0.5">
         <div className="shrink-0 self-center">
-          <QRCodeSVG value={qrValue(spool, encoding)} size={56} level="M" />
+          <QRCodeSVG value={qrValue(spool, encoding)} size={50} level="M" />
         </div>
         <div className="flex flex-col justify-center gap-0.5 min-w-0 flex-1">
           <p className="text-[10px] font-bold text-gray-900 leading-tight truncate">{name}</p>
@@ -356,7 +356,7 @@ function MicroStripLabel({ spool, encoding, slots }: TemplateProps) {
     <div className="flex h-full items-center">
       <div className="w-1.5 h-full rounded-l shrink-0" style={{ backgroundColor: hex ?? '#6366f1' }} />
       <div className="px-1 shrink-0">
-        <QRCodeSVG value={qrValue(spool, encoding)} size={36} level="L" />
+        <QRCodeSVG value={qrValue(spool, encoding)} size={32} level="L" />
       </div>
       <div className="flex flex-col min-w-0 flex-1">
         <p className="text-[8px] font-bold text-gray-900 truncate leading-none">{name}</p>
@@ -397,7 +397,7 @@ function SquareClassicLabel({ spool, encoding, slots }: TemplateProps) {
             {mat}{fp?.diameter ? ` · ${fp.diameter}mm` : ''}
           </p>
         </div>
-        <QRCodeSVG value={qrValue(spool, encoding)} size={54} level="M" />
+        <QRCodeSVG value={qrValue(spool, encoding)} size={49} level="M" />
         <div className="w-full space-y-0.5">
           {textSlots.map((slot, i) => (
             <SlotRow key={i} slot={slot} spool={spool} compact />
@@ -436,7 +436,7 @@ function TallCardLabel({ spool, encoding, slots }: TemplateProps) {
         </p>
       </div>
       <div className="flex justify-center py-1.5 flex-1 items-center">
-        <QRCodeSVG value={qrValue(spool, encoding)} size={64} level="M" />
+        <QRCodeSVG value={qrValue(spool, encoding)} size={58} level="M" />
       </div>
       <div className="px-1.5 pb-1.5 shrink-0 space-y-0.5">
         {textSlots.map((slot, i) => (
@@ -461,7 +461,7 @@ function NarrowPortraitLabel({ spool, encoding, slots }: TemplateProps) {
     <div className="flex flex-col h-full">
       <div className="h-2 rounded-t shrink-0" style={{ backgroundColor: hex ?? '#6366f1' }} />
       <div className="flex justify-center pt-1.5 shrink-0">
-        <QRCodeSVG value={qrValue(spool, encoding)} size={68} level="M" />
+        <QRCodeSVG value={qrValue(spool, encoding)} size={61} level="M" />
       </div>
       <div className="flex flex-col items-center px-1 pt-1 pb-1 flex-1 gap-0.5 min-h-0">
         <p className="text-[8px] font-bold text-gray-900 leading-tight text-center w-full truncate">{name}</p>
