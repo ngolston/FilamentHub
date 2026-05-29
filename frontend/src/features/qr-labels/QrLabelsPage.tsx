@@ -224,15 +224,41 @@ function triggerDownload(href: string, filename: string) {
 }
 
 async function captureElementPng(el: HTMLElement): Promise<string> {
-  // html2canvas walks the live DOM and draws each element directly to a
-  // <canvas> — unlike html-to-image's SVG foreignObject approach, it handles
-  // Tailwind CSS classes, external stylesheets, and QR-code SVGs correctly.
+  // Wait for all fonts (Poppins from Google Fonts) to finish loading so
+  // character widths match the on-screen preview exactly.
+  await document.fonts.ready
+
   const html2canvas = (await import('html2canvas')).default
-  const canvas = await html2canvas(el, {
+
+  // Capture the inner label element (first child of the wrapper div).
+  // The wrapper carries position:absolute which can confuse html2canvas;
+  // the inner SpoolLabel / LocationBadgeLabel div is statically laid out
+  // with explicit width/height and is the actual content we want.
+  const target = (el.firstElementChild as HTMLElement) ?? el
+  const width  = target.offsetWidth  || parseInt(el.style.width,  10)
+  const height = target.offsetHeight || parseInt(el.style.height, 10)
+
+  const canvas = await html2canvas(target, {
     scale: 3,
     backgroundColor: '#ffffff',
     useCORS: true,
     logging: false,
+    width,
+    height,
+    // scrollX/scrollY must be 0 for position:fixed elements.
+    // Without this, html2canvas offsets the capture by the page's current
+    // scroll position, which cuts off the top/left of every label.
+    scrollX: 0,
+    scrollY: 0,
+    // windowWidth/Height scoped to the label so no off-screen UI bleeds in.
+    windowWidth: width,
+    windowHeight: height,
+    // Remove the outer shadow from the capture — shadows extend outside the
+    // border box and can shift content inward when clipped.
+    onclone: (_doc, clonedEl) => {
+      clonedEl.style.boxShadow = 'none'
+      clonedEl.style.borderRadius = '0'
+    },
   })
   return canvas.toDataURL('image/png')
 }
