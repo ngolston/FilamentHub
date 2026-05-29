@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
+import { renderSpoolLabel, renderLocationLabel } from './renderLabel'
 import {
   Printer, CheckSquare, Square, QrCode,
   LayoutGrid, ChevronDown, Info, MapPin,
@@ -214,71 +215,17 @@ function printLocationLabels(areaId: string) {
   window.print()
 }
 
-// ── PNG / ZIP export helpers ──────────────────────────────────────────────────
+// ── Download helpers ──────────────────────────────────────────────────────────
 
 function triggerDownload(href: string, filename: string) {
   const a = document.createElement('a')
-  a.href     = href
-  a.download = filename
-  a.click()
+  a.href = href; a.download = filename; a.click()
 }
 
-async function captureElementPng(el: HTMLElement): Promise<string> {
-  // Wait for all fonts (Poppins from Google Fonts) to finish loading so
-  // character widths match the on-screen preview exactly.
-  await document.fonts.ready
-
-  const html2canvas = (await import('html2canvas')).default
-
-  // Capture the inner label element (first child of the wrapper div).
-  // The wrapper carries position:absolute which can confuse html2canvas;
-  // the inner SpoolLabel / LocationBadgeLabel div is statically laid out
-  // with explicit width/height and is the actual content we want.
-  const target = (el.firstElementChild as HTMLElement) ?? el
-  const width  = target.offsetWidth  || parseInt(el.style.width,  10)
-  const height = target.offsetHeight || parseInt(el.style.height, 10)
-
-  const canvas = await html2canvas(target, {
-    scale: 3,
-    backgroundColor: '#ffffff',
-    useCORS: true,
-    logging: false,
-    width,
-    height,
-    // scrollX/scrollY must be 0 for position:fixed elements.
-    // Without this, html2canvas offsets the capture by the page's current
-    // scroll position, which cuts off the top/left of every label.
-    scrollX: 0,
-    scrollY: 0,
-    // windowWidth/Height scoped to the label so no off-screen UI bleeds in.
-    windowWidth: width,
-    windowHeight: height,
-    // Remove the outer shadow from the capture — shadows extend outside the
-    // border box and can shift content inward when clipped.
-    onclone: (_doc, clonedEl) => {
-      clonedEl.style.boxShadow = 'none'
-      clonedEl.style.borderRadius = '0'
-    },
-  })
-  return canvas.toDataURL('image/png')
-}
-
-async function downloadSinglePng(el: HTMLElement, filename: string) {
-  const dataUrl = await captureElementPng(el)
-  triggerDownload(dataUrl, filename)
-}
-
-async function downloadZip(
-  elements: HTMLElement[],
-  filenames: string[],
-  zipName: string,
-) {
-  const JSZip  = (await import('jszip')).default
-  const zip    = new JSZip()
-  for (let i = 0; i < elements.length; i++) {
-    const dataUrl = await captureElementPng(elements[i])
-    zip.file(filenames[i], dataUrl.split(',')[1], { base64: true })
-  }
+async function bundleZip(dataUrls: string[], filenames: string[], zipName: string) {
+  const JSZip = (await import('jszip')).default
+  const zip   = new JSZip()
+  dataUrls.forEach((url, i) => zip.file(filenames[i], url.split(',')[1], { base64: true }))
   const blob = await zip.generateAsync({ type: 'blob' })
   const url  = URL.createObjectURL(blob)
   triggerDownload(url, zipName)
@@ -536,7 +483,7 @@ function LocationBadgeLabel({ location, forScreen = false }: { location: Locatio
 
 const PRINT_AREA_ID     = 'qr-label-print-area'
 const LOC_PRINT_AREA_ID = 'qr-label-loc-print-area'
-const EXPORT_AREA_ID    = 'qr-label-export-area'
+
 
 type Tab = 'spools' | 'locations'
 
@@ -552,10 +499,7 @@ export default function QrLabelsPage() {
   const [templateSlots, setTemplateSlots] = useState<Partial<Record<LabelTemplate, ClassicSlot[]>>>({})
   const [locSelected,   setLocSelected]  = useState<Set<number>>(new Set())
 
-  // Export state — controls whether the off-screen export area is mounted
-  const [exportMode,    setExportMode]   = useState<'idle' | 'spools' | 'locations'>('idle')
-  const [exporting,     setExporting]    = useState(false)
-  const exportAreaRef = useRef<HTMLDivElement>(null)
+  const [exporting, setExporting] = useState(false)
 
   const { data: spoolData, isLoading: spoolsLoading } = useQuery({
     queryKey: ['spools', 'all'],
@@ -605,59 +549,37 @@ export default function QrLabelsPage() {
 
   // ── PNG export ──────────────────────────────────────────────────────────────
 
+  // ── PNG / ZIP export (pure canvas — no DOM capture) ────────────────────────
+
   const handleSpoolPng = useCallback(async () => {
     setExporting(true)
-    setExportMode('spools')
-
-    // Wait three frames: one for React to commit, two more for the browser
-    // to fully paint SVG QR codes and resolve Tailwind computed styles.
-    await new Promise<void>((r) => requestAnimationFrame(() =>
-      requestAnimationFrame(() => requestAnimationFrame(() => r()))
-    ))
-
-    const container = exportAreaRef.current
-    if (!container) { setExporting(false); setExportMode('idle'); return }
-
-    const els = Array.from(container.children) as HTMLElement[]
-
     try {
-      if (els.length === 1) {
-        const spool = selectedSpools[0]
-        await downloadSinglePng(els[0], `spool-${spool.id}.png`)
+      if (selectedSpools.length === 1) {
+        const url = await renderSpoolLabel(selectedSpools[0], template, currentSlots, encoding)
+        triggerDownload(url, `spool-${selectedSpools[0].id}.png`)
       } else {
-        const filenames = selectedSpools.map((_, i) => `${i + 1}.png`)
-        await downloadZip(els, filenames, 'spool-labels.zip')
+        const urls = await Promise.all(
+          selectedSpools.map((s) => renderSpoolLabel(s, template, currentSlots, encoding))
+        )
+        await bundleZip(urls, selectedSpools.map((_, i) => `${i + 1}.png`), 'spool-labels.zip')
       }
     } finally {
       setExporting(false)
-      setExportMode('idle')
     }
-  }, [selectedSpools])
+  }, [selectedSpools, template, currentSlots, encoding])
 
   const handleLocationPng = useCallback(async () => {
     setExporting(true)
-    setExportMode('locations')
-
-    await new Promise<void>((r) => requestAnimationFrame(() =>
-      requestAnimationFrame(() => requestAnimationFrame(() => r()))
-    ))
-
-    const container = exportAreaRef.current
-    if (!container) { setExporting(false); setExportMode('idle'); return }
-
-    const els = Array.from(container.children) as HTMLElement[]
-
     try {
-      if (els.length === 1) {
-        const loc = selectedLocations[0]
-        await downloadSinglePng(els[0], `location-${loc.id}.png`)
+      if (selectedLocations.length === 1) {
+        const url = await renderLocationLabel(selectedLocations[0])
+        triggerDownload(url, `location-${selectedLocations[0].id}.png`)
       } else {
-        const filenames = selectedLocations.map((_, i) => `${i + 1}.png`)
-        await downloadZip(els, filenames, 'location-labels.zip')
+        const urls = await Promise.all(selectedLocations.map(renderLocationLabel))
+        await bundleZip(urls, selectedLocations.map((_, i) => `${i + 1}.png`), 'location-labels.zip')
       }
     } finally {
       setExporting(false)
-      setExportMode('idle')
     }
   }, [selectedLocations])
 
@@ -892,7 +814,7 @@ export default function QrLabelsPage() {
                 <ExportMenuButton
                   count={selectedSpools.length}
                   disabled={selectedSpools.length === 0}
-                  exporting={exporting && exportMode === 'spools'}
+                  exporting={exporting}
                   onPdf={() => printLabels(PRINT_AREA_ID, columns, activeEntry.mmW, activeEntry.mmH)}
                   onPng={handleSpoolPng}
                 />
@@ -989,7 +911,7 @@ export default function QrLabelsPage() {
                 <ExportMenuButton
                   count={selectedLocations.length}
                   disabled={selectedLocations.length === 0}
-                  exporting={exporting && exportMode === 'locations'}
+                  exporting={exporting}
                   onPdf={() => printLocationLabels(LOC_PRINT_AREA_ID)}
                   onPng={handleLocationPng}
                 />
@@ -1034,48 +956,6 @@ export default function QrLabelsPage() {
         document.body,
       )}
 
-      {/* ── PNG export portal ────────────────────────────────────────────
-           z-index 69 = below the "Generating…" overlay (z-70) but above
-           the normal app UI, so the browser definitely paints every label.
-           All children are stacked at position absolute top:0 left:0 so
-           every label sits inside the viewport regardless of count —
-           avoiding any off-screen paint-culling for large selections.    */}
-      {exportMode !== 'idle' && createPortal(
-        <div
-          ref={exportAreaRef}
-          id={EXPORT_AREA_ID}
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            zIndex: 69,
-            pointerEvents: 'none',
-          }}
-        >
-          {exportMode === 'spools'
-            ? selectedSpools.map((spool) => {
-                const { w, h } = LABEL_PX[template]
-                return (
-                  <div
-                    key={spool.id}
-                    style={{ position: 'absolute', top: 0, left: 0, width: w, height: h }}
-                  >
-                    <SpoolLabel spool={spool} template={template} slots={currentSlots} encoding={encoding} />
-                  </div>
-                )
-              })
-            : selectedLocations.map((loc) => (
-                <div
-                  key={loc.id}
-                  style={{ position: 'absolute', top: 0, left: 0, width: LOC_W, height: LOC_H }}
-                >
-                  <LocationBadgeLabel location={loc} />
-                </div>
-              ))
-          }
-        </div>,
-        document.body,
-      )}
 
       {/* ── Exporting overlay ─────────────────────────────────────────── */}
       {exporting && (
