@@ -463,6 +463,92 @@ async function drawNarrowPortrait(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// Labelife AML generator
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Wraps a PNG data-URL in a Labelife-compatible `.aml` XML envelope.
+ *
+ * The AML format (LPAPI v1.6) stores the label as a base64-embedded image
+ * inside an XML structure.  All dimensions are in millimetres.
+ */
+export function generateAml(
+  pngDataUrl: string,
+  labelName: string,
+  widthMm: number,
+  heightMm: number,
+): string {
+  const base64   = pngDataUrl.replace(/^data:image\/png;base64,/, '')
+  const wInt     = Math.round(widthMm)
+  const hInt     = Math.round(heightMm)
+  const typeName = `White-${wInt}${hInt}`
+  const wInch    = (widthMm / 25.4).toFixed(3)
+  const hInch    = (heightMm / 25.4).toFixed(3)
+
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<LPAPI version="1.6">
+      <labelName>${labelName}</labelName>
+      <paperName>Custom Label</paperName>
+      <isPrintHorizontal>0</isPrintHorizontal>
+      <labelHeight>${heightMm.toFixed(3)}</labelHeight>
+      <labelWidth>${widthMm.toFixed(3)}</labelWidth>
+      <validBoundsX>1</validBoundsX>
+      <validBoundsY>1</validBoundsY>
+      <validBoundsWidth>${wInt - 2}</validBoundsWidth>
+      <validBoundsHeight>${hInt - 2}</validBoundsHeight>
+      <paperType>0</paperType>
+      <paperBackground>#ffffff</paperBackground>
+      <paperForeground>#000000</paperForeground>
+      <DisplaySize_mm>${widthMm.toFixed(2)}mm * ${heightMm.toFixed(2)}mm</DisplaySize_mm>
+      <DisplaySize_in>${wInch}inch * ${hInch}inch</DisplaySize_in>
+      <isRotate180>0</isRotate180>
+      <isBannerMode>0</isBannerMode>
+      <isCustomSize>0</isCustomSize>
+      <leftBlank>0</leftBlank>
+      <rightBlank>0</rightBlank>
+      <upBlank>0</upBlank>
+      <downBlank>0</downBlank>
+      <typeName>${typeName}</typeName>
+      <showDisplayMm>${widthMm.toFixed(1)}mm * ${heightMm.toFixed(1)}mm</showDisplayMm>
+      <showDisplayIn>${(widthMm / 25.4).toFixed(2)}inch * ${(heightMm / 25.4).toFixed(2)}inch</showDisplayIn>
+      <contents>
+          <WdPage>
+              <masksToBoundsType>0</masksToBoundsType>
+              <borderDisplay>0</borderDisplay>
+              <isAutoHeight>0</isAutoHeight>
+              <lineType>0</lineType>
+              <borderWidth>1</borderWidth>
+              <borderColor>#000000</borderColor>
+              <lockMovement>0</lockMovement>
+              <contents><Image>
+                    <lineType>0</lineType>
+                    <content>${base64}</content>
+                    <height>${heightMm.toFixed(3)}</height>
+                    <width>${widthMm.toFixed(3)}</width>
+                    <y>0.000</y>
+                    <x>0.000</x>
+                    <orientation>0.000000</orientation>
+                    <lockMovement>0</lockMovement>
+                    <borderDisplay>0</borderDisplay>
+                    <borderHeight>0.7055555449591742</borderHeight>
+                    <borderColor>#000000</borderColor>
+                    <id>2150144943</id>
+                    <objectId>2153023841</objectId>
+                    <imageEffect>0</imageEffect>
+                    <antiColor>0</antiColor>
+                    <isRatioScale>1</isRatioScale>
+                    <imageType>0</imageType>
+                    <isMirror>0</isMirror>
+                    <isRedBlack>0</isRedBlack>
+              </Image></contents>
+              <columnCount>0</columnCount>
+              <isRibbonLabel>0</isRibbonLabel>
+          </WdPage>
+      </contents>
+</LPAPI>`
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Public export functions
 // ═══════════════════════════════════════════════════════════════════════════════
 

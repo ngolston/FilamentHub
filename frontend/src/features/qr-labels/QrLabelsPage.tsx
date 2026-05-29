@@ -2,11 +2,11 @@ import { useCallback, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { QRCodeSVG } from 'qrcode.react'
-import { renderSpoolLabel, renderLocationLabel } from './renderLabel'
+import { renderSpoolLabel, renderLocationLabel, generateAml } from './renderLabel'
 import {
   Printer, CheckSquare, Square, QrCode,
   LayoutGrid, ChevronDown, Info, MapPin,
-  FileImage, FileDown,
+  FileImage, FileDown, FileCode,
 } from 'lucide-react'
 import { spoolsApi } from '@/api/spools'
 import { locationsApi } from '@/api/locations'
@@ -240,9 +240,10 @@ interface ExportMenuProps {
   exporting: boolean
   onPdf: () => void
   onPng: () => void
+  onAml: () => void
 }
 
-function ExportMenuButton({ count, disabled, exporting, onPdf, onPng }: ExportMenuProps) {
+function ExportMenuButton({ count, disabled, exporting, onPdf, onPng, onAml }: ExportMenuProps) {
   const [open, setOpen] = useState(false)
   const ref             = useRef<HTMLDivElement>(null)
 
@@ -256,9 +257,7 @@ function ExportMenuButton({ count, disabled, exporting, onPdf, onPng }: ExportMe
     return () => document.removeEventListener('mousedown', handler)
   })
 
-  const label = count > 0
-    ? `${count} label${count !== 1 ? 's' : ''}`
-    : 'labels'
+  const label = count > 0 ? `${count} label${count !== 1 ? 's' : ''}` : 'labels'
 
   return (
     <div ref={ref} className="relative flex items-end">
@@ -272,7 +271,7 @@ function ExportMenuButton({ count, disabled, exporting, onPdf, onPng }: ExportMe
         Print {label}
       </button>
 
-      {/* Arrow to open dropdown */}
+      {/* Arrow */}
       <button
         onClick={() => setOpen((v) => !v)}
         disabled={disabled || exporting}
@@ -284,7 +283,9 @@ function ExportMenuButton({ count, disabled, exporting, onPdf, onPng }: ExportMe
 
       {/* Dropdown */}
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 z-50 w-56 rounded-xl border border-surface-border bg-surface-1 shadow-2xl overflow-hidden">
+        <div className="absolute right-0 top-full mt-1.5 z-50 w-64 rounded-xl border border-surface-border bg-surface-1 shadow-2xl overflow-hidden">
+
+          {/* Print / PDF */}
           <button
             onClick={() => { setOpen(false); onPdf() }}
             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-2 hover:text-white transition-colors text-left"
@@ -298,28 +299,47 @@ function ExportMenuButton({ count, disabled, exporting, onPdf, onPng }: ExportMe
 
           <div className="h-px bg-surface-border" />
 
+          {/* Save as PNG / ZIP */}
           <button
             onClick={() => { setOpen(false); onPng() }}
             disabled={exporting}
             className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-2 hover:text-white transition-colors text-left disabled:opacity-50"
           >
             {count > 1
-              ? <FileDown className="h-4 w-4 shrink-0 text-gray-500" />
-              : <FileImage className="h-4 w-4 shrink-0 text-gray-500" />
-            }
+              ? <FileDown  className="h-4 w-4 shrink-0 text-gray-500" />
+              : <FileImage className="h-4 w-4 shrink-0 text-gray-500" />}
             <span>
               <span className="font-medium text-white block leading-tight">
                 {count > 1 ? `Save as ZIP (${count} PNGs)` : 'Save as PNG'}
               </span>
               <span className="text-xs text-gray-500">
-                {count > 1 ? 'Each label saved as 1.png, 2.png, …' : 'High-resolution image file'}
+                {count > 1 ? 'Each label as 1.png, 2.png, …' : 'High-resolution image file'}
+              </span>
+            </span>
+          </button>
+
+          <div className="h-px bg-surface-border" />
+
+          {/* Save as Labelife .aml */}
+          <button
+            onClick={() => { setOpen(false); onAml() }}
+            disabled={exporting}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-gray-300 hover:bg-surface-2 hover:text-white transition-colors text-left disabled:opacity-50"
+          >
+            <FileCode className="h-4 w-4 shrink-0 text-gray-500" />
+            <span>
+              <span className="font-medium text-white block leading-tight">
+                {count > 1 ? `Save as Labelife ZIP (${count} .aml)` : 'Save as Labelife (.aml)'}
+              </span>
+              <span className="text-xs text-gray-500">
+                Open directly in Labelife label software
               </span>
             </span>
           </button>
         </div>
       )}
 
-      {/* Exporting overlay indicator */}
+      {/* Exporting spinner */}
       {exporting && (
         <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-primary-900/80 pointer-events-none">
           <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
@@ -583,6 +603,73 @@ export default function QrLabelsPage() {
     }
   }, [selectedLocations])
 
+  // ── Labelife .aml export ────────────────────────────────────────────────────
+
+  const handleSpoolAml = useCallback(async () => {
+    setExporting(true)
+    try {
+      const { mmW, mmH } = activeEntry
+      if (selectedSpools.length === 1) {
+        const spool = selectedSpools[0]
+        const png   = await renderSpoolLabel(spool, template, currentSlots, encoding)
+        const name  = spool.name ?? spool.filament?.name ?? `spool-${spool.id}`
+        const aml   = generateAml(png, name, mmW, mmH)
+        triggerDownload(
+          `data:application/xml;charset=utf-8,${encodeURIComponent(aml)}`,
+          `spool-${spool.id}.aml`,
+        )
+      } else {
+        const JSZip = (await import('jszip')).default
+        const zip   = new JSZip()
+        for (let i = 0; i < selectedSpools.length; i++) {
+          const spool = selectedSpools[i]
+          const png   = await renderSpoolLabel(spool, template, currentSlots, encoding)
+          const name  = spool.name ?? spool.filament?.name ?? `spool-${spool.id}`
+          const aml   = generateAml(png, name, mmW, mmH)
+          zip.file(`${i + 1}.aml`, aml)
+        }
+        const blob = await zip.generateAsync({ type: 'blob' })
+        const url  = URL.createObjectURL(blob)
+        triggerDownload(url, 'spool-labels-labelife.zip')
+        URL.revokeObjectURL(url)
+      }
+    } finally {
+      setExporting(false)
+    }
+  }, [selectedSpools, template, currentSlots, encoding, activeEntry])
+
+  const handleLocationAml = useCallback(async () => {
+    setExporting(true)
+    try {
+      // Location labels are always 40×30 mm
+      const mmW = 40, mmH = 30
+      if (selectedLocations.length === 1) {
+        const loc = selectedLocations[0]
+        const png = await renderLocationLabel(loc)
+        const aml = generateAml(png, loc.name, mmW, mmH)
+        triggerDownload(
+          `data:application/xml;charset=utf-8,${encodeURIComponent(aml)}`,
+          `location-${loc.id}.aml`,
+        )
+      } else {
+        const JSZip = (await import('jszip')).default
+        const zip   = new JSZip()
+        for (let i = 0; i < selectedLocations.length; i++) {
+          const loc = selectedLocations[i]
+          const png = await renderLocationLabel(loc)
+          const aml = generateAml(png, loc.name, mmW, mmH)
+          zip.file(`${i + 1}.aml`, aml)
+        }
+        const blob = await zip.generateAsync({ type: 'blob' })
+        const url  = URL.createObjectURL(blob)
+        triggerDownload(url, 'location-labels-labelife.zip')
+        URL.revokeObjectURL(url)
+      }
+    } finally {
+      setExporting(false)
+    }
+  }, [selectedLocations])
+
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
 
@@ -817,6 +904,7 @@ export default function QrLabelsPage() {
                   exporting={exporting}
                   onPdf={() => printLabels(PRINT_AREA_ID, columns, activeEntry.mmW, activeEntry.mmH)}
                   onPng={handleSpoolPng}
+                  onAml={handleSpoolAml}
                 />
               </div>
             </div>
@@ -914,6 +1002,7 @@ export default function QrLabelsPage() {
                   exporting={exporting}
                   onPdf={() => printLocationLabels(LOC_PRINT_AREA_ID)}
                   onPng={handleLocationPng}
+                  onAml={handleLocationAml}
                 />
               </div>
             </div>
