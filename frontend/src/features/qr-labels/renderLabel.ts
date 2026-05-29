@@ -1,22 +1,17 @@
 /**
  * Pure-canvas label renderer.
- *
- * Draws QR labels directly onto a <canvas> using the Canvas 2D API — no DOM
- * capture, no html2canvas, no html-to-image.  All layout values are translated
- * directly from the CSS pixel dimensions used in the React preview components.
+ * Draws QR labels directly onto a <canvas> — no DOM capture needed.
  */
 
 import type { SpoolResponse, LocationResponse } from '@/types/api'
 import type { LabelTemplate, ClassicSlot, QrEncoding } from './SpoolLabel'
 import { LABEL_PX, CLASSIC_FIELD_LABELS } from './SpoolLabel'
 
-const SCALE = 3   // output is 3× the CSS pixel dimensions → crisp on retina
+const SCALE = 3
 
 // ── Font helpers ──────────────────────────────────────────────────────────────
 
-async function loadFonts() {
-  await document.fonts.ready
-}
+async function loadFonts() { await document.fonts.ready }
 
 function font(weight: number, size: number) {
   return `${weight} ${size}px "Poppins", system-ui, sans-serif`
@@ -40,15 +35,14 @@ async function makeQR(value: string, size: number): Promise<HTMLCanvasElement> {
   const QRCode = (await import('qrcode')).default
   const c = document.createElement('canvas')
   await QRCode.toCanvas(c, value, {
-    width: size,
-    margin: 0,
+    width: size, margin: 0,
     color: { dark: '#000000', light: '#ffffff' },
     errorCorrectionLevel: 'M',
   })
   return c
 }
 
-// ── Data helpers (mirror SpoolLabel logic) ────────────────────────────────────
+// ── Data helpers ──────────────────────────────────────────────────────────────
 
 function qrValue(spool: SpoolResponse, enc: QrEncoding): string {
   const fp = spool.filament
@@ -67,14 +61,8 @@ function qrValue(spool: SpoolResponse, enc: QrEncoding): string {
 function slotText(slot: ClassicSlot, spool: SpoolResponse): string {
   const fp = spool.filament
   switch (slot.field) {
-    case 'nozzle': {
-      const a = fp?.print_temp_min, b = fp?.print_temp_max
-      return (a || b) ? (a && b ? `${a}–${b}°C` : a ? `${a}°C` : `${b}°C`) : '—'
-    }
-    case 'bed': {
-      const a = fp?.bed_temp_min, b = fp?.bed_temp_max
-      return (a || b) ? (a && b ? `${a}–${b}°C` : a ? `${a}°C` : `${b}°C`) : '—'
-    }
+    case 'nozzle': { const a = fp?.print_temp_min, b = fp?.print_temp_max; return (a||b)?(a&&b?`${a}–${b}°C`:a?`${a}°C`:`${b}°C`):'—' }
+    case 'bed':    { const a = fp?.bed_temp_min,   b = fp?.bed_temp_max;   return (a||b)?(a&&b?`${a}–${b}°C`:a?`${a}°C`:`${b}°C`):'—' }
     case 'id':       return `${spool.id}`
     case 'color':    return fp?.color_hex ?? spool.color_hex ?? '—'
     case 'fill':     return `${spool.fill_percentage.toFixed(0)}%`
@@ -87,72 +75,47 @@ function slotText(slot: ClassicSlot, spool: SpoolResponse): string {
   }
 }
 
-/** Draw evenly-spaced label+value rows into the data region. */
 function drawSlotRows(
   ctx: CanvasRenderingContext2D,
-  rows: ClassicSlot[],
-  spool: SpoolResponse,
+  rows: ClassicSlot[], spool: SpoolResponse,
   x: number, y: number, w: number, h: number,
   compact = false,
 ) {
   if (rows.length === 0) return
-  const fs       = compact ? 7 : 7.5
-  const labelW   = 40
-  const rowH     = h / rows.length
-
+  const fs    = compact ? 7 : 7.5
+  const labelW = 40
+  const rowH  = h / rows.length
   rows.forEach((slot, i) => {
     const label = CLASSIC_FIELD_LABELS[slot.field] ?? ''
     const value = slotText(slot, spool)
     const ry    = y + i * rowH + (rowH - fs) / 2
-
     if (label) {
-      ctx.font      = font(400, fs)
-      ctx.fillStyle = '#9ca3af'
-      ctx.textBaseline = 'top'
+      ctx.font = font(400, fs); ctx.fillStyle = '#9ca3af'; ctx.textBaseline = 'top'
       ctx.fillText(label, x, ry)
     }
-
-    ctx.font      = font(600, fs)
-    ctx.fillStyle = '#1f2937'
-    const vx      = label ? x + labelW : x
-    ctx.fillText(trunc(ctx, value, w - (label ? labelW : 0)), vx, ry)
+    ctx.font = font(600, fs); ctx.fillStyle = '#1f2937'
+    ctx.fillText(trunc(ctx, value, w - (label ? labelW : 0)), label ? x + labelW : x, ry)
   })
 }
 
-/** Draw a horizontal fill bar. */
 function drawFillBar(
   ctx: CanvasRenderingContext2D,
   pct: number, hex: string | null,
   x: number, y: number, w: number, h: number,
 ) {
-  // Track
-  ctx.fillStyle = '#e5e7eb'
-  ctx.beginPath()
-  ctx.roundRect(x, y, w, h, h / 2)
-  ctx.fill()
-  // Fill
+  ctx.fillStyle = '#e5e7eb'; ctx.beginPath(); ctx.roundRect(x, y, w, h, h / 2); ctx.fill()
   const fw = (w * Math.min(pct, 100)) / 100
-  if (fw > 0) {
-    ctx.fillStyle = hex ?? '#6366f1'
-    ctx.beginPath()
-    ctx.roundRect(x, y, fw, h, h / 2)
-    ctx.fill()
-  }
-  // Percentage text
-  const fs = 7
-  ctx.font      = font(600, fs)
-  ctx.fillStyle = '#4b5563'
-  ctx.textBaseline = 'middle'
-  ctx.textAlign = 'right'
-  ctx.fillText(`${pct.toFixed(0)}%`, x + w + 14, y + h / 2)
-  ctx.textAlign = 'left'
+  if (fw > 0) { ctx.fillStyle = hex ?? '#6366f1'; ctx.beginPath(); ctx.roundRect(x, y, fw, h, h / 2); ctx.fill() }
+  ctx.font = font(600, 7); ctx.fillStyle = '#4b5563'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right'
+  ctx.fillText(`${pct.toFixed(0)}%`, x + w + 14, y + h / 2); ctx.textAlign = 'left'
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Template renderers
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// ── 1. Classic Badge (151×113) ────────────────────────────────────────────────
+// ── 1. Classic Badge (151×113 = 40×30mm) ─────────────────────────────────────
+// QR: 65px (was 38) — bottom-right anchor, left column for data
 
 async function drawClassicBadge(
   ctx: CanvasRenderingContext2D,
@@ -170,45 +133,51 @@ async function drawClassicBadge(
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.textBaseline = 'top'
 
-  // Brand — 14px black, pt-1.5=6, px-2=8
-  ctx.font = font(900, 14); ctx.fillStyle = '#111827'
-  ctx.fillText(trunc(ctx, brand, w - 16), 8, 6)
-  const afterBrand = 6 + 14 + 4   // text + mt-1
+  // Brand — 12px black, 4px top pad
+  ctx.font = font(900, 12); ctx.fillStyle = '#111827'
+  ctx.fillText(trunc(ctx, brand, w - 16), 8, 4)
+  const afterBrand = 4 + 12 + 4   // top pad + text + gap
 
-  // Material bar — bg-gray-900, h≈15, py-[3px]
+  // Material bar — dark, 15px high
   const barH = 15
   ctx.fillStyle = '#111827'; ctx.fillRect(0, afterBrand, w, barH)
-  // hex (right, mono)
-  ctx.font = mono(7.5); ctx.fillStyle = '#d1d5db'
-  const hexW = hex ? ctx.measureText(hex).width + 4 : 0
-  if (hex) { ctx.textAlign = 'right'; ctx.fillText(hex, w - 8, afterBrand + 3); ctx.textAlign = 'left' }
-  // material (left, bold, white)
+  // hex right — 9.5px mono (bigger)
+  ctx.font = mono(9.5); ctx.fillStyle = '#d1d5db'
+  const hexW = hex ? ctx.measureText(hex).width + 6 : 0
+  if (hex) { ctx.textAlign = 'right'; ctx.fillText(hex, w - 6, afterBrand + 3); ctx.textAlign = 'left' }
+  // material left — 9px bold white
   ctx.font = font(700, 9); ctx.fillStyle = '#ffffff'
-  ctx.fillText(trunc(ctx, mat, w - 16 - hexW), 8, afterBrand + 3)
-  const afterBar = afterBrand + barH + 2
+  ctx.fillText(trunc(ctx, mat, w - 14 - hexW), 6, afterBrand + 3)
 
-  // Spool name — 9px bold, pt-0.5=2
-  ctx.font = font(700, 9); ctx.fillStyle = '#1f2937'
-  ctx.fillText(trunc(ctx, name, w - 16), 8, afterBar + 2)
-  const afterName = afterBar + 11 + 4   // text h + pt-1
+  const contentY = afterBrand + barH + 2   // y where content area begins
 
-  // QR + data rows
-  const qrSize = 38
+  // QR — 65px, anchored to bottom-right with 4px margin
+  const qrSize = 65
+  const botPad = 4
+  const qrX    = w - botPad - qrSize   // = 82
+  const qrY    = h - botPad - qrSize   // = 44
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
-  const botPad = 6
-  const dataH  = h - afterName - botPad
-  const dataW  = w - 8 - qrSize - 4 - 8  // left pad, qr, gap, right pad
+  ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
 
-  ctx.drawImage(qrImg, w - 8 - qrSize, h - botPad - qrSize, qrSize, qrSize)
+  // Left column: spool name + data rows
+  const colW   = qrX - 4 - 8   // gap from QR + left pad = 70px
+  const colH   = h - contentY - botPad
+
+  ctx.font = font(700, 9); ctx.fillStyle = '#1f2937'
+  ctx.fillText(trunc(ctx, name, colW), 8, contentY + 2)
+
+  const rowsY  = contentY + 13
+  const rowsH  = colH - 13
 
   if (hasFill && rows.length === 0) {
-    drawFillBar(ctx, spool.fill_percentage, hex, 8, h - botPad - 5, dataW - 16, 5)
+    drawFillBar(ctx, spool.fill_percentage, hex, 8, h - botPad - 5, colW - 8, 5)
   } else {
-    drawSlotRows(ctx, rows, spool, 8, afterName, dataW, dataH)
+    drawSlotRows(ctx, rows, spool, 8, rowsY, colW, rowsH)
   }
 }
 
-// ── 2. Wide Card (189×113) ────────────────────────────────────────────────────
+// ── 2. Wide Card (189×113 = 50×30mm) ─────────────────────────────────────────
+// QR: 62px (was 36) — right column spans full content height
 
 async function drawWideCard(
   ctx: CanvasRenderingContext2D,
@@ -225,14 +194,19 @@ async function drawWideCard(
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.textBaseline = 'top'
 
-  // Left color stripe (w-2=8)
+  // Left color stripe
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 8, h)
 
-  // Header area: brand + name (left) + QR (right), px-2 py-1.5
-  const qrSize = 36
-  const hdrH   = qrSize + 12   // qr + padding
+  // QR — 62px, right side, vertically centered
+  const qrSize = 62
+  const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
+  const qrX    = w - 6 - qrSize
+  const qrY    = (h - qrSize) / 2
+  ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
+
+  // Text column (left of QR)
   const textX  = 10
-  const textW  = w - 10 - qrSize - 6 - 6
+  const textW  = qrX - 4 - textX   // gap from QR
 
   if (brand) {
     ctx.font = font(400, 7); ctx.fillStyle = '#9ca3af'
@@ -241,20 +215,17 @@ async function drawWideCard(
   ctx.font = font(700, 11); ctx.fillStyle = '#111827'
   ctx.fillText(trunc(ctx, name, textW), textX, brand ? 17 : 10)
 
-  const qrImg = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, w - 6 - qrSize, 6, qrSize, qrSize)
-
-  // Data rows
-  const dataY = hdrH + 2
-  const dataH = h - dataY - 6
+  const dataY = brand ? 30 : 24
+  const dataH = h - dataY - (hasFill ? 14 : 6)
   drawSlotRows(ctx, rows, spool, textX, dataY, textW, dataH, true)
 
   if (hasFill) {
-    drawFillBar(ctx, spool.fill_percentage, hex, textX, h - 10, w - textX - 8, 5)
+    drawFillBar(ctx, spool.fill_percentage, hex, textX, h - 10, textW, 5)
   }
 }
 
-// ── 3. Slim Tag (151×91) ──────────────────────────────────────────────────────
+// ── 3. Slim Tag (151×91 = 40×24mm) ───────────────────────────────────────────
+// QR: 58px (was 42)
 
 async function drawSlimTag(
   ctx: CanvasRenderingContext2D,
@@ -272,18 +243,17 @@ async function drawSlimTag(
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.textBaseline = 'top'
 
-  // Colored header bar (h-2 = 8px)
+  // Colored header bar (8px)
   const hdrH = 8
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, w, hdrH)
-  // brand left, material right
   ctx.font = font(600, 7); ctx.fillStyle = 'rgba(255,255,255,0.9)'
   if (brand) ctx.fillText(trunc(ctx, brand, (w / 2) - 6), 6, 1)
   ctx.textAlign = 'right'
   ctx.fillText(trunc(ctx, mat, (w / 2) - 6), w - 4, 1)
   ctx.textAlign = 'left'
 
-  // Body: QR left, text right
-  const qrSize  = 42
+  // Body: QR left (58px), text right
+  const qrSize  = 58
   const bodyY   = hdrH + 2
   const bodyH   = h - bodyY - (hasFill ? 12 : 4)
   const qrImg   = await makeQR(qrValue(spool, enc), qrSize)
@@ -295,55 +265,50 @@ async function drawSlimTag(
   ctx.fillText(trunc(ctx, name, textW), textX, bodyY + 2)
   drawSlotRows(ctx, rows, spool, textX, bodyY + 14, textW, bodyH - 14, true)
 
-  if (hasFill) {
-    drawFillBar(ctx, spool.fill_percentage, hex, 4, h - 10, w - 8, 4)
-  }
+  if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, 4, h - 10, w - 8, 4)
 }
 
-// ── 4. Micro Strip (151×45) ───────────────────────────────────────────────────
+// ── 4. Micro Strip (151×45 = 40×12mm) ────────────────────────────────────────
+// QR: 38px (was 28) — very constrained by label height
 
 async function drawMicroStrip(
   ctx: CanvasRenderingContext2D,
   spool: SpoolResponse, slots: ClassicSlot[], enc: QrEncoding,
   w: number, h: number,
 ) {
-  const fp      = spool.filament
-  const hex     = fp?.color_hex ?? spool.color_hex ?? null
-  const name    = spool.name ?? fp?.name ?? '—'
-  const hasFill = slots.some(s => s.enabled && s.field === 'fill_bar')
+  const fp       = spool.filament
+  const hex      = fp?.color_hex ?? spool.color_hex ?? null
+  const name     = spool.name ?? fp?.name ?? '—'
+  const hasFill  = slots.some(s => s.enabled && s.field === 'fill_bar')
   const textSlot = slots.find(s => s.enabled && s.field !== 'fill_bar' && s.field !== 'none')
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.textBaseline = 'middle'
 
-  // Left stripe (w-1.5 = 6px)
+  // Left stripe
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 6, h)
 
-  // QR code
-  const qrSize = 28
+  // QR — 38px (fits within 45px height with 3.5px margin each side)
+  const qrSize = 38
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
   ctx.drawImage(qrImg, 8, (h - qrSize) / 2, qrSize, qrSize)
 
-  // Name + secondary text
-  const textX  = 8 + qrSize + 4
-  const fillW  = hasFill ? 60 : 0
-  const textW  = w - textX - fillW - 4
+  const textX = 8 + qrSize + 4
+  const fillW = hasFill ? 56 : 0
+  const textW = w - textX - fillW - 4
 
   ctx.font = font(700, 8); ctx.fillStyle = '#111827'
   ctx.fillText(trunc(ctx, name, textW), textX, h / 2 - 4)
-
   if (textSlot) {
-    const secondary = slotText(textSlot, spool)
     ctx.font = font(400, 7); ctx.fillStyle = '#6b7280'
-    ctx.fillText(trunc(ctx, secondary, textW), textX, h / 2 + 5)
+    ctx.fillText(trunc(ctx, slotText(textSlot, spool), textW), textX, h / 2 + 5)
   }
 
-  if (hasFill) {
-    drawFillBar(ctx, spool.fill_percentage, hex, w - fillW - 2, h / 2 - 3, fillW - 12, 5)
-  }
+  if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, w - fillW - 2, h / 2 - 3, fillW - 12, 5)
 }
 
-// ── 5. Square Classic (151×113) ───────────────────────────────────────────────
+// ── 5. Square Classic (151×113 = 40×30mm) ────────────────────────────────────
+// QR: 65px (was 46) — centered between header and footer
 
 async function drawSquareClassic(
   ctx: CanvasRenderingContext2D,
@@ -361,35 +326,39 @@ async function drawSquareClassic(
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.textBaseline = 'top'
 
-  // Left stripe (w-2 = 8px)
+  // Left stripe
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, 8, h)
 
-  const cx    = 8 + (w - 8) / 2   // center of content area
-  const textW = w - 8 - 16         // w minus stripe minus px-1.5 each side
+  const cx    = 8 + (w - 8) / 2
+  const textW = w - 8 - 16
 
-  // Top header: brand + name + material
+  // Compact header: brand + name + material (~32px total)
   ctx.font = font(400, 7); ctx.fillStyle = '#9ca3af'; ctx.textAlign = 'center'
-  if (brand) ctx.fillText(trunc(ctx, brand.toUpperCase(), textW), cx, 6)
+  if (brand) ctx.fillText(trunc(ctx, brand.toUpperCase(), textW), cx, 4)
   ctx.font = font(700, 11); ctx.fillStyle = '#111827'
-  ctx.fillText(trunc(ctx, name, textW), cx, brand ? 16 : 8)
-  ctx.font = font(400, 8); ctx.fillStyle = '#6b7280'
-  ctx.fillText(trunc(ctx, mat, textW), cx, brand ? 30 : 22)
+  ctx.fillText(trunc(ctx, name, textW), cx, brand ? 13 : 6)
+  ctx.font = font(400, 7.5); ctx.fillStyle = '#6b7280'
+  ctx.fillText(trunc(ctx, mat, textW), cx, brand ? 27 : 20)
   ctx.textAlign = 'left'
+  const headerEnd = brand ? 38 : 30
 
-  // QR center
-  const qrSize = 46
+  // Footer height
+  const footerH = (rows.length > 0 ? rows.length * 9 : 0) + (hasFill ? 10 : 0) + 6
+  const footerY = h - footerH
+
+  // QR — 65px, centered in middle zone
+  const midH   = footerY - headerEnd
+  const qrSize = 65
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, cx - qrSize / 2, (h - qrSize) / 2, qrSize, qrSize)
+  ctx.drawImage(qrImg, cx - qrSize / 2, headerEnd + (midH - qrSize) / 2, qrSize, qrSize)
 
-  // Footer data rows
-  const footerY = h - 6 - (rows.length * 9) - (hasFill ? 8 : 0)
-  drawSlotRows(ctx, rows, spool, 10, footerY, textW, rows.length * 9, true)
-  if (hasFill) {
-    drawFillBar(ctx, spool.fill_percentage, hex, 10, h - 10, textW, 4)
-  }
+  // Footer
+  if (rows.length > 0) drawSlotRows(ctx, rows, spool, 10, footerY, textW, rows.length * 9, true)
+  if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, 10, h - 10, textW, 4)
 }
 
-// ── 6. Tall Card (113×151) ────────────────────────────────────────────────────
+// ── 6. Tall Card (113×151 = 30×40mm) ─────────────────────────────────────────
+// QR: 78px (was 52)
 
 async function drawTallCard(
   ctx: CanvasRenderingContext2D,
@@ -405,41 +374,40 @@ async function drawTallCard(
   const hasFill = slots.some(s => s.enabled && s.field === 'fill_bar')
 
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
-  ctx.textBaseline = 'middle'
 
   // Colored header
   const hdrH = 20
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, w, hdrH)
   ctx.font = font(600, 7); ctx.fillStyle = 'rgba(255,255,255,0.9)'
-  ctx.textAlign = 'center'
-  const hdrLabel = brand ? `◉ ${brand}` : '◉'
-  ctx.fillText(hdrLabel, w / 2, hdrH / 2)
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+  ctx.fillText(brand ? `◉  ${brand}` : '◉', w / 2, hdrH / 2)
   ctx.textAlign = 'left'
 
   // Name + material
   ctx.textBaseline = 'top'
-  ctx.font = font(700, 10); ctx.fillStyle = '#111827'
-  ctx.textAlign = 'center'
-  ctx.fillText(trunc(ctx, name, w - 12), w / 2, hdrH + 6)
+  ctx.font = font(700, 10); ctx.fillStyle = '#111827'; ctx.textAlign = 'center'
+  ctx.fillText(trunc(ctx, name, w - 12), w / 2, hdrH + 5)
   ctx.font = font(400, 7); ctx.fillStyle = '#6b7280'
-  ctx.fillText(trunc(ctx, mat, w - 12), w / 2, hdrH + 20)
+  ctx.fillText(trunc(ctx, mat, w - 12), w / 2, hdrH + 19)
   ctx.textAlign = 'left'
+  const headerEnd = hdrH + 30
 
-  // QR center
-  const qrSize = 52
+  // Footer
+  const footerH = (rows.length > 0 ? rows.length * 9 : 0) + (hasFill ? 10 : 0) + 6
+  const footerY = h - footerH
+
+  // QR — 78px, centered between header and footer
+  const midH   = footerY - headerEnd
+  const qrSize = 78
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, (w - qrSize) / 2, (h - qrSize) / 2, qrSize, qrSize)
+  ctx.drawImage(qrImg, (w - qrSize) / 2, headerEnd + (midH - qrSize) / 2, qrSize, qrSize)
 
-  // Footer data rows
-  const footerH = rows.length * 9 + (hasFill ? 10 : 0)
-  const footerY = h - footerH - 6
-  drawSlotRows(ctx, rows, spool, 6, footerY, w - 12, rows.length * 9, true)
-  if (hasFill) {
-    drawFillBar(ctx, spool.fill_percentage, hex, 6, h - 10, w - 12, 4)
-  }
+  if (rows.length > 0) drawSlotRows(ctx, rows, spool, 6, footerY, w - 12, rows.length * 9, true)
+  if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, 6, h - 10, w - 12, 4)
 }
 
-// ── 7. Narrow Portrait (95×151) ───────────────────────────────────────────────
+// ── 7. Narrow Portrait (95×151 = 25×40mm) ────────────────────────────────────
+// QR: 72px (was 54)
 
 async function drawNarrowPortrait(
   ctx: CanvasRenderingContext2D,
@@ -457,13 +425,12 @@ async function drawNarrowPortrait(
   // Top stripe
   ctx.fillStyle = hex ?? '#6366f1'; ctx.fillRect(0, 0, w, 8)
 
-  // QR center-top area
-  const qrSize = 54
+  // QR — 72px, centered horizontally, just below stripe
+  const qrSize = 72
   const qrImg  = await makeQR(qrValue(spool, enc), qrSize)
-  ctx.drawImage(qrImg, (w - qrSize) / 2, 12, qrSize, qrSize)
+  ctx.drawImage(qrImg, (w - qrSize) / 2, 10, qrSize, qrSize)
 
-  // Name + rows
-  const textY = 12 + qrSize + 4
+  const textY = 10 + qrSize + 4
   ctx.font = font(700, 8); ctx.fillStyle = '#111827'
   ctx.textBaseline = 'top'; ctx.textAlign = 'center'
   ctx.fillText(trunc(ctx, name, w - 8), w / 2, textY)
@@ -476,9 +443,7 @@ async function drawNarrowPortrait(
   })
   ctx.textAlign = 'left'
 
-  if (hasFill) {
-    drawFillBar(ctx, spool.fill_percentage, hex, 6, h - 10, w - 12, 4)
-  }
+  if (hasFill) drawFillBar(ctx, spool.fill_percentage, hex, 6, h - 10, w - 12, 4)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -522,82 +487,69 @@ export async function renderLocationLabel(location: LocationResponse): Promise<s
   const ctx     = canvas.getContext('2d')!
   ctx.scale(SCALE, SCALE)
 
-  // White background with black border
+  // Background + border
   ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h)
   ctx.strokeStyle = '#000000'; ctx.lineWidth = 1
   ctx.strokeRect(0.5, 0.5, w - 1, h - 1)
 
-  // Header bar (black, h=19)
+  // Header bar
   const hdrH = 19
   ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, w, hdrH)
   ctx.font = font(700, 6.5); ctx.fillStyle = '#ffffff'
   ctx.textBaseline = 'middle'; ctx.textAlign = 'left'
   ctx.fillText('STORAGE LOCATION', 18, hdrH / 2)
   ctx.font = font(600, 6); ctx.fillStyle = 'rgba(255,255,255,0.35)'
-  ctx.textAlign = 'right'
-  ctx.fillText('FH', w - 8, hdrH / 2)
-  ctx.textAlign = 'left'
+  ctx.textAlign = 'right'; ctx.fillText('FH', w - 6, hdrH / 2); ctx.textAlign = 'left'
 
-  // QR code (right column, w=66)
-  const qrW   = 66
-  const qrURL = `${window.location.origin}/l/${location.id}`
-  const qrSize = 56
-  const qrImg = await makeQR(qrURL, qrSize)
-  ctx.drawImage(qrImg, w - qrW + (qrW - qrSize) / 2, hdrH + (h - hdrH - 13 - qrSize) / 2, qrSize, qrSize)
+  // QR — 72px in a 78px right column (was 56px in 66px column)
+  const qrColW = 78
+  const qrSize = 72
+  const qrURL  = `${window.location.origin}/l/${location.id}`
+  const qrImg  = await makeQR(qrURL, qrSize)
+  const footH  = 13
+  const bodyH  = h - hdrH - footH
+  ctx.drawImage(qrImg, w - qrColW + (qrColW - qrSize) / 2, hdrH + (bodyH - qrSize) / 2, qrSize, qrSize)
 
   // Vertical divider
   ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1
-  ctx.beginPath(); ctx.moveTo(w - qrW, hdrH); ctx.lineTo(w - qrW, h - 13); ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(w - qrColW, hdrH); ctx.lineTo(w - qrColW, h - footH); ctx.stroke()
 
   // Info column
-  const infoW = w - qrW - 14  // left pad 7, right pad 7
+  const infoW = w - qrColW - 14
   let cy = hdrH + 5
-
-  // Location name
   ctx.textBaseline = 'top'
-  ctx.font = font(900, 13); ctx.fillStyle = '#000000'
-  // word-wrap the name up to 2 lines
-  const nameWords = location.name.split(' ')
+  ctx.font = font(900, 12); ctx.fillStyle = '#000000'
+
+  // Word-wrap name (up to 2 lines)
+  const words = location.name.split(' ')
   let line1 = '', line2 = ''
-  for (const word of nameWords) {
+  for (const word of words) {
     const test = line1 ? `${line1} ${word}` : word
-    if (ctx.measureText(test).width <= infoW) {
-      line1 = test
-    } else if (!line2) {
-      line2 = word
-    } else {
-      line2 = trunc(ctx, `${line2} ${word}`, infoW)
-    }
+    if (ctx.measureText(test).width <= infoW) { line1 = test }
+    else if (!line2) { line2 = word }
+    else { line2 = trunc(ctx, `${line2} ${word}`, infoW) }
   }
-  ctx.fillText(line1, 7, cy)
-  cy += 14
+  ctx.fillText(line1, 7, cy); cy += 14
   if (line2) { ctx.fillText(trunc(ctx, line2, infoW), 7, cy); cy += 14 }
 
-  // Divider
   ctx.fillStyle = '#d1d5db'; ctx.fillRect(7, cy, infoW, 1); cy += 5
 
-  // Spool count
   ctx.font = font(500, 7.5); ctx.fillStyle = '#374151'
-  ctx.fillText(`${location.spool_count} spool${location.spool_count !== 1 ? 's' : ''}`, 13, cy)
-  cy += 11
+  ctx.fillText(`${location.spool_count} spool${location.spool_count !== 1 ? 's' : ''}`, 13, cy); cy += 11
 
-  // Dry box badge
   if (location.is_dry_box) {
     ctx.strokeStyle = '#000'; ctx.lineWidth = 0.8
     ctx.strokeRect(7, cy, 32, 9)
     ctx.font = font(800, 6); ctx.fillStyle = '#000'
-    ctx.fillText('DRY BOX', 9, cy + 1.5)
-    cy += 12
+    ctx.fillText('DRY BOX', 9, cy + 1.5); cy += 12
   }
 
-  // Description
   if (location.description) {
     ctx.font = font(400, 6.5); ctx.fillStyle = '#6b7280'
     ctx.fillText(trunc(ctx, location.description, infoW), 7, cy)
   }
 
   // Footer bar
-  const footH = 13
   ctx.fillStyle = '#111111'; ctx.fillRect(0, h - footH, w, footH)
   ctx.font = mono(6.5); ctx.fillStyle = 'rgba(255,255,255,0.6)'
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
