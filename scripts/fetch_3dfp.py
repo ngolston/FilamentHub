@@ -21,6 +21,7 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 try:
     from curl_cffi.requests import AsyncSession
@@ -180,7 +181,7 @@ async def main() -> None:
                     resp = await asyncio.wait_for(
                         session.get(
                             f"{BASE_URL}/materials/{slug}",
-                            headers={**HEADERS, "Next-Url": f"/materials/{slug}"},
+                            headers={**HEADERS, "Next-Url": f"/materials/{quote(slug)}"},
                         ),
                         timeout=120,
                     )
@@ -226,7 +227,7 @@ async def main() -> None:
                     resp = await asyncio.wait_for(
                         session.get(
                             f"{BASE_URL}/filaments/{slug}",
-                            headers={**HEADERS, "Next-Url": f"/filaments/{slug}"},
+                            headers={**HEADERS, "Next-Url": f"/filaments/{quote(slug)}"},
                         ),
                         timeout=10,
                     )
