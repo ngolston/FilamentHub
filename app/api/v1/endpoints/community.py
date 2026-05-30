@@ -37,7 +37,7 @@ class _FilamentQuery:
         manufacturer: str | None   = None,
         source:       str | None   = None,
         page:         int          = Query(1, ge=1),
-        page_size:    int          = Query(500, ge=1, le=5000),
+        page_size:    int          = Query(500, ge=1, le=50000),
     ) -> None:
         self.search       = search
         self.material     = material

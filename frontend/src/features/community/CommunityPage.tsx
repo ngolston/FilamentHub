@@ -644,7 +644,16 @@ export default function CommunityPage() {
     data: listData, isLoading, isFetching, isError, error, refetch,
   } = useQuery({
     queryKey: ['community', 'filaments'],
-    queryFn:  () => communityApi.list({ page_size: 5000 }),
+    queryFn: async () => {
+      const first = await communityApi.list({ page_size: 5000, page: 1 })
+      if (first.pages <= 1) return first
+      const rest = await Promise.all(
+        Array.from({ length: first.pages - 1 }, (_, i) =>
+          communityApi.list({ page_size: 5000, page: i + 2 })
+        )
+      )
+      return { ...first, items: [...first.items, ...rest.flatMap((r) => r.items)] }
+    },
     staleTime: 10 * 60_000,
     retry: 1,
   })
