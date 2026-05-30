@@ -223,7 +223,8 @@ function SpoolDetailModal({ spool, onClose, onEdit }: {
             <div className="grid grid-cols-2 gap-3">
               <ViewField label="Brand" value={spool.brand?.name ?? fp?.brand?.name ?? null} icon={<Tag className="h-3.5 w-3.5" />} />
               <ViewField label="Profile name" value={fp?.name ?? null} icon={<Tag className="h-3.5 w-3.5" />} />
-              <ViewField label="Material" value={fp?.material ?? null} icon={<Tag className="h-3.5 w-3.5" />} />
+              <ViewField label="Material" value={spool.material ?? fp?.material ?? null} icon={<Tag className="h-3.5 w-3.5" />} />
+              <ViewField label="Material Type" value={spool.material_type ?? null} icon={<Tag className="h-3.5 w-3.5" />} />
               <ViewField label="Diameter" value={fp?.diameter ? `${fp.diameter} mm` : null} icon={<Scale className="h-3.5 w-3.5" />} />
               <ViewField label="Colors" icon={<Tag className="h-3.5 w-3.5" />}>
                 {(() => {
@@ -732,8 +733,9 @@ export default function SpoolsPage() {
   // ── Filters ────────────────────────────────────────────────────────────────
   const [searchParams] = useSearchParams()
   const [search,        setSearch]        = useState(() => getInitialActiveView().filters.search)
-  const [material,      setMaterial]      = useState(() => getInitialActiveView().filters.material)
-  const [brandFilter,   setBrandFilter]   = useState(() => getInitialActiveView().filters.brandFilter)
+  const [material,         setMaterial]         = useState(() => getInitialActiveView().filters.material)
+  const [materialTypeFlt,  setMaterialTypeFlt]  = useState(() => getInitialActiveView().filters.materialTypeFlt)
+  const [brandFilter,      setBrandFilter]      = useState(() => getInitialActiveView().filters.brandFilter)
   const [statusFlt,     setStatusFlt]     = useState(() => getInitialActiveView().filters.statusFlt)
   const [colorFlt,      setColorFlt]      = useState(() => getInitialActiveView().filters.colorFlt)
   const [basicColorFlt, setBasicColorFlt] = useState(() => getInitialActiveView().filters.basicColorFlt)
@@ -772,7 +774,11 @@ export default function SpoolsPage() {
 
   // ── Derived filter options ─────────────────────────────────────────────────
   const materials = useMemo(() =>
-    [...new Set(allSpools.map((s) => s.filament?.material).filter((m): m is string => !!m))].sort()
+    [...new Set(allSpools.map((s) => s.material ?? s.filament?.material).filter((m): m is string => !!m))].sort()
+  , [allSpools])
+
+  const materialTypes = useMemo(() =>
+    [...new Set(allSpools.map((s) => s.material_type).filter((t): t is string => !!t))].sort()
   , [allSpools])
 
   const brands = useMemo(() => {
@@ -823,7 +829,7 @@ export default function SpoolsPage() {
   }, [allSpools])
 
   // ── Filtering ──────────────────────────────────────────────────────────────
-  const hasFilters = !!(search || material || brandFilter || statusFlt || printerFlt || colorFlt || basicColorFlt || locationFlt)
+  const hasFilters = !!(search || material || materialTypeFlt || brandFilter || statusFlt || printerFlt || colorFlt || basicColorFlt || locationFlt)
 
   const filtered = useMemo(() => {
     let r = allSpools
@@ -839,7 +845,8 @@ export default function SpoolsPage() {
       )
     }
     if (statusFlt)      r = r.filter((s) => s.status === statusFlt)
-    if (material)       r = r.filter((s) => s.filament?.material === material)
+    if (material)         r = r.filter((s) => (s.material ?? s.filament?.material) === material)
+    if (materialTypeFlt)  r = r.filter((s) => s.material_type === materialTypeFlt)
     if (brandFilter)    r = r.filter((s) => {
       const b = s.brand ?? s.filament?.brand
       return b && String(b.id) === brandFilter
@@ -849,7 +856,7 @@ export default function SpoolsPage() {
     if (basicColorFlt)  r = r.filter((s) => spoolHexes(s).some((h) => hexToBasicColor(h) === basicColorFlt))
     if (locationFlt)    r = r.filter((s) => s.location && String(s.location.id) === locationFlt)
     return r
-  }, [allSpools, search, statusFlt, material, brandFilter, printerFlt, colorFlt, basicColorFlt, locationFlt, spoolPrinters])
+  }, [allSpools, search, statusFlt, material, materialTypeFlt, brandFilter, printerFlt, colorFlt, basicColorFlt, locationFlt, spoolPrinters])
 
   // ── Sorting ────────────────────────────────────────────────────────────────
   const sorted = useMemo(() => {
@@ -858,7 +865,7 @@ export default function SpoolsPage() {
       switch (sortBy) {
         case 'id':        av = a.id; bv = b.id; break
         case 'name':      av = a.name ?? a.filament?.name ?? ''; bv = b.name ?? b.filament?.name ?? ''; break
-        case 'material':  av = a.filament?.material ?? ''; bv = b.filament?.material ?? ''; break
+        case 'material':  av = a.material ?? a.filament?.material ?? ''; bv = b.material ?? b.filament?.material ?? ''; break
         case 'status':    av = a.status; bv = b.status; break
         case 'fill_pct':  av = a.fill_percentage; bv = b.fill_percentage; break
         case 'remaining': av = a.remaining_weight; bv = b.remaining_weight; break
@@ -876,7 +883,7 @@ export default function SpoolsPage() {
   const safePage  = Math.min(page, pageCount)
   const paged     = sorted.slice((safePage - 1) * pageSize, safePage * pageSize)
 
-  useEffect(() => { setPage(1) }, [search, material, brandFilter, statusFlt, printerFlt, colorFlt, basicColorFlt, locationFlt])
+  useEffect(() => { setPage(1) }, [search, material, materialTypeFlt, brandFilter, statusFlt, printerFlt, colorFlt, basicColorFlt, locationFlt])
 
   // ── Sort handler ───────────────────────────────────────────────────────────
   function handleSort(col: SortKey) {
@@ -1038,7 +1045,13 @@ export default function SpoolsPage() {
     },
     {
       key: 'material', label: 'Material', sortKey: 'material', thClassName: 'w-28',
-      render: (s) => <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs text-gray-300">{s.filament?.material ?? '—'}</span>,
+      render: (s) => <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs text-gray-300">{s.material ?? s.filament?.material ?? '—'}</span>,
+    },
+    {
+      key: 'material_type', label: 'Material Type', thClassName: 'w-32',
+      render: (s) => s.material_type
+        ? <span className="rounded-full bg-violet-900/30 border border-violet-700/30 px-2 py-0.5 text-xs text-violet-300">{s.material_type}</span>
+        : <span className="text-gray-600">—</span>,
     },
     {
       key: 'color_name', label: 'Color Name', thClassName: 'w-32',
@@ -1126,20 +1139,21 @@ export default function SpoolsPage() {
   )
 
   const isDirty = useMemo(() => {
-    const curFilters  = { search, material, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt }
+    const curFilters  = { search, material, materialTypeFlt, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt }
     const savedCols   = activeView.columns.length > 0 ? activeView.columns : DEFAULT_COLUMNS
     const filtersOk   = JSON.stringify(curFilters) === JSON.stringify(activeView.filters)
     const colsOk      = [...visibleCols].sort().join(',') === [...savedCols].sort().join(',')
     const sortOk      = sortBy === activeView.sortBy && sortDir === activeView.sortDir
     const viewModeOk  = view === activeView.viewMode
     return !(filtersOk && colsOk && sortOk && viewModeOk)
-  }, [search, material, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt,
+  }, [search, material, materialTypeFlt, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt,
       sortBy, sortDir, view, visibleCols, activeView])
 
   // ── View helpers ───────────────────────────────────────────────────────────
   function applyView(v: typeof activeView) {
     setSearch(v.filters.search)
     setMaterial(v.filters.material)
+    setMaterialTypeFlt(v.filters.materialTypeFlt ?? '')
     setBrandFilter(v.filters.brandFilter)
     setStatusFlt(v.filters.statusFlt)
     setColorFlt(v.filters.colorFlt)
@@ -1166,7 +1180,7 @@ export default function SpoolsPage() {
       id,
       name: saveViewName.trim(),
       columns: visibleCols,
-      filters: { search, material, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt },
+      filters: { search, material, materialTypeFlt, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt },
       sortBy, sortDir, viewMode: view,
     })
     activateView(id)
@@ -1176,7 +1190,7 @@ export default function SpoolsPage() {
   }
 
   function clearAllFilters() {
-    setSearch(''); setMaterial(''); setBrandFilter(''); setStatusFlt('')
+    setSearch(''); setMaterial(''); setMaterialTypeFlt(''); setBrandFilter(''); setStatusFlt('')
     setColorFlt(''); setBasicColorFlt(''); setLocationFlt(''); setPrinterFlt('')
   }
 
@@ -1299,7 +1313,7 @@ export default function SpoolsPage() {
                 saveView({
                   ...activeView,
                   columns: visibleCols,
-                  filters: { search, material, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt },
+                  filters: { search, material, materialTypeFlt, brandFilter, statusFlt, colorFlt, basicColorFlt, locationFlt, printerFlt },
                   sortBy, sortDir, viewMode: view,
                 })
                 toast(`"${activeView.name}" updated`)
@@ -1338,8 +1352,9 @@ export default function SpoolsPage() {
         </div>
 
         <FilterSelect value={statusFlt}   onChange={setStatusFlt}   label="Status"   options={(['active','storage','archived'] as SpoolStatus[]).map((v) => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) }))} />
-        <FilterSelect value={material}    onChange={setMaterial}    label="Material" options={materials.map((m) => ({ value: m, label: m }))} />
-        <FilterSelect value={brandFilter} onChange={setBrandFilter} label="Brand"    options={brands.map(([id, name]) => ({ value: String(id), label: name }))} />
+        <FilterSelect value={material}        onChange={setMaterial}        label="Material"      options={materials.map((m) => ({ value: m, label: m }))} />
+        <FilterSelect value={materialTypeFlt} onChange={setMaterialTypeFlt} label="Material Type" options={materialTypes.map((t) => ({ value: t, label: t }))} />
+        <FilterSelect value={brandFilter}     onChange={setBrandFilter}     label="Brand"         options={brands.map(([id, name]) => ({ value: String(id), label: name }))} />
         {/* Basic color filter with color dot */}
         <select
           value={basicColorFlt}

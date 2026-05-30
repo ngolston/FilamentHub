@@ -4,14 +4,15 @@ import type { SortKey } from './SpoolTable'
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface ViewFilters {
-  search:       string
-  material:     string
-  brandFilter:  string
-  statusFlt:    string
-  colorFlt:     string
-  basicColorFlt: string
-  locationFlt:  string
-  printerFlt:   string
+  search:          string
+  material:        string
+  materialTypeFlt: string
+  brandFilter:     string
+  statusFlt:       string
+  colorFlt:        string
+  basicColorFlt:   string
+  locationFlt:     string
+  printerFlt:      string
 }
 
 export interface SpoolView {
@@ -32,7 +33,7 @@ export const DEFAULT_COLUMNS = [
 ]
 
 const EMPTY_FILTERS: ViewFilters = {
-  search: '', material: '', brandFilter: '', statusFlt: '',
+  search: '', material: '', materialTypeFlt: '', brandFilter: '', statusFlt: '',
   colorFlt: '', basicColorFlt: '', locationFlt: '', printerFlt: '',
 }
 

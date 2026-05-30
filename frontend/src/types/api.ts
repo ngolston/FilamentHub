@@ -236,6 +236,7 @@ export interface SpoolResponse {
   extra_color_hex_2: string | null
   extra_color_hex_3: string | null
   extra_color_hex_4: string | null
+  material: string | null
   material_type: string | null
   status: SpoolStatus
   notes: string | null
@@ -263,6 +264,7 @@ export interface SpoolCreate {
   extra_color_hex_2?: string | null
   extra_color_hex_3?: string | null
   extra_color_hex_4?: string | null
+  material?: string | null
   material_type?: string | null
   status?: SpoolStatus
   notes?: string

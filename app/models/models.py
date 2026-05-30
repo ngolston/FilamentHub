@@ -272,6 +272,8 @@ class Spool(Base):
     extra_color_hex_3: Mapped[str | None] = mapped_column(String(7))
     extra_color_hex_4: Mapped[str | None] = mapped_column(String(7))
 
+    # Material override (set directly on spool, takes precedence over linked filament profile)
+    material: Mapped[str | None] = mapped_column(String(50))
     # Material type / finish (Silk, Matte, CF, Glow, etc.) — separate from base material
     material_type: Mapped[str | None] = mapped_column(String(100))
 
