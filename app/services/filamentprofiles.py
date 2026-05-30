@@ -25,8 +25,9 @@ CACHE_FILE  = Path("/tmp/filamenthub_3dfp_cache.json")
 CONCURRENCY = 30
 IMPERSONATE = "chrome120"
 
-_cache: dict[str, Any] = {"filaments": [], "synced_at": None}
-_sync_lock = asyncio.Lock()
+_cache: dict[str, Any] = {"filaments": [], "synced_at": None, "sync_status": "idle"}
+_sync_lock      = asyncio.Lock()
+_bg_task_started = False
 
 # ── RSC helpers ───────────────────────────────────────────────────────────────
 
@@ -192,12 +193,14 @@ _COMMON_HEADERS = {
 
 async def _do_sync() -> None:
     logger.info("Starting 3DFilamentProfiles sync…")
+    _cache["sync_status"] = "syncing"
     try:
         from curl_cffi.requests import AsyncSession  # type: ignore[import-untyped]
     except ImportError:
+        _cache["sync_status"] = "unavailable"
         logger.warning(
             "curl_cffi not installed — skipping 3DFilamentProfiles sync. "
-            "Add curl_cffi>=0.7.0 to project dependencies."
+            "Rebuild the container so pip installs curl_cffi>=0.7.0."
         )
         return
 
@@ -261,8 +264,9 @@ async def _do_sync() -> None:
                 seen.add(item["id"])
                 unique.append(item)
 
-        _cache["filaments"] = unique
-        _cache["synced_at"] = datetime.now(UTC).isoformat()
+        _cache["filaments"]   = unique
+        _cache["synced_at"]   = datetime.now(UTC).isoformat()
+        _cache["sync_status"] = "ready"
         _save_to_disk()
         logger.info(
             "3DFilamentProfiles sync complete: %d unique filaments from %d brands",
@@ -270,27 +274,40 @@ async def _do_sync() -> None:
         )
 
     except OSError as exc:
+        _cache["sync_status"] = "error"
         logger.warning("3DFilamentProfiles sync failed (network): %s", exc)
     except Exception as exc:  # noqa: BLE001
+        _cache["sync_status"] = "error"
         logger.warning("3DFilamentProfiles sync failed: %s", exc)
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
 async def get_or_sync() -> dict:
-    """Return cached data, syncing on first call."""
-    if _cache["filaments"]:
+    """Return cached data immediately; kick off a background sync on first call."""
+    global _bg_task_started
+    if _cache["filaments"] or _cache["sync_status"] in ("syncing", "unavailable"):
         return _cache
-    async with _sync_lock:
-        if _cache["filaments"]:
-            return _cache
-        if not _load_from_disk():
-            await _do_sync()
+    if _load_from_disk():
+        return _cache
+    # Fire-and-forget background sync so the API stays responsive
+    if not _bg_task_started:
+        _bg_task_started = True
+        asyncio.create_task(_bg_sync())
     return _cache
 
 
+async def _bg_sync() -> None:
+    global _bg_task_started
+    try:
+        async with _sync_lock:
+            await _do_sync()
+    finally:
+        _bg_task_started = False
+
+
 async def sync() -> dict:
-    """Force a fresh sync."""
+    """Force a fresh foreground sync (used by the 'Check for updates' button)."""
     async with _sync_lock:
         await _do_sync()
     return _cache

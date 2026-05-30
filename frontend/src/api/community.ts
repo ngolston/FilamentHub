@@ -42,6 +42,8 @@ export interface CommunityStats {
   total_brands:      number
   contributor_count: number
   synced_at:         string | null
+  fp_count:          number
+  fp_sync_status:    'idle' | 'syncing' | 'ready' | 'unavailable' | 'error'
 }
 
 export interface CommunityImportPayload {

@@ -26,60 +26,81 @@ async def _combined() -> tuple[list[dict], str | None]:
     return sdb + fp, sdb_data.get("synced_at")
 
 
+class _FilamentQuery:
+    """Query-parameter bundle for the filament list endpoint."""
+
+    def __init__(
+        self,
+        search:       str | None   = None,
+        material:     str | None   = None,
+        diameter:     float | None = None,
+        manufacturer: str | None   = None,
+        source:       str | None   = None,
+        page:         int          = Query(1, ge=1),
+        page_size:    int          = Query(500, ge=1, le=5000),
+    ) -> None:
+        self.search       = search
+        self.material     = material
+        self.diameter     = diameter
+        self.manufacturer = manufacturer
+        self.source       = source
+        self.page         = page
+        self.page_size    = page_size
+
+
 @router.get("/stats")
 async def community_stats(_: User = Depends(get_current_user)):
+    """Return aggregate stats for both filament databases."""
     filaments, synced_at = await _combined()
     manufacturers = {f["manufacturer"] for f in filaments}
     sdb_data = await spoolmandb.get_or_sync()
+    fp_data  = await filamentprofiles.get_or_sync()
     return {
         "total_profiles":    len(filaments),
         "total_brands":      len(manufacturers),
         "contributor_count": sdb_data.get("contributor_count", 0),
         "synced_at":         synced_at,
+        "fp_count":          len(fp_data["filaments"]),
+        "fp_sync_status":    fp_data.get("sync_status", "idle"),
     }
 
 
 @router.get("/filaments")
 async def list_community_filaments(
-    search:       str | None = None,
-    material:     str | None = None,
-    diameter:     float | None = None,
-    manufacturer: str | None = None,
-    source:       str | None = None,
-    page:         int = Query(1, ge=1),
-    page_size:    int = Query(500, ge=1, le=5000),
-    _: User = Depends(get_current_user),
+    q: _FilamentQuery = Depends(),
+    _: User           = Depends(get_current_user),
 ):
+    """List community filaments from all sources with optional filters."""
     filaments, synced_at = await _combined()
 
-    if source:
-        filaments = [f for f in filaments if f.get("source") == source]
-    if search:
-        q = search.lower()
+    if q.source:
+        filaments = [f for f in filaments if f.get("source") == q.source]
+    if q.search:
+        s = q.search.lower()
         filaments = [
             f for f in filaments
-            if q in f["manufacturer"].lower()
-            or q in f["name"].lower()
-            or q in f["material"].lower()
-            or q in (f.get("color_name") or "").lower()
+            if s in f["manufacturer"].lower()
+            or s in f["name"].lower()
+            or s in f["material"].lower()
+            or s in (f.get("color_name") or "").lower()
         ]
-    if material:
-        filaments = [f for f in filaments if f["material"] == material]
-    if diameter:
-        filaments = [f for f in filaments if f["diameter"] == diameter]
-    if manufacturer:
-        filaments = [f for f in filaments if f["manufacturer"] == manufacturer]
+    if q.material:
+        filaments = [f for f in filaments if f["material"] == q.material]
+    if q.diameter:
+        filaments = [f for f in filaments if f["diameter"] == q.diameter]
+    if q.manufacturer:
+        filaments = [f for f in filaments if f["manufacturer"] == q.manufacturer]
 
     total  = len(filaments)
-    offset = (page - 1) * page_size
-    items  = filaments[offset : offset + page_size]
+    offset = (q.page - 1) * q.page_size
+    items  = filaments[offset : offset + q.page_size]
 
     return {
         "items":     items,
         "total":     total,
-        "page":      page,
-        "page_size": page_size,
-        "pages":     max(1, -(-total // page_size)),
+        "page":      q.page,
+        "page_size": q.page_size,
+        "pages":     max(1, -(-total // q.page_size)),
         "synced_at": synced_at,
     }
 

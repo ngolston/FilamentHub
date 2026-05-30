@@ -1071,7 +1071,16 @@ export default function CommunityPage() {
             <div className="flex flex-col items-center gap-3 py-16 text-center">
               <Database className="h-12 w-12 text-gray-600" />
               <p className="text-sm text-gray-400">
-                {tab === 'imports' ? 'No imports yet. Browse and import filaments above.' : 'No filaments match the current filters.'}
+                {tab === 'imports'
+                  ? 'No imports yet. Browse and import filaments above.'
+                  : srcFilter === '3dfilamentprofiles' && (statsData?.fp_sync_status ?? 'idle') !== 'ready'
+                    ? statsData?.fp_sync_status === 'syncing'
+                      ? '3D Filament Profiles is syncing in the background — check back in a minute.'
+                      : statsData?.fp_sync_status === 'unavailable'
+                        ? '3D Filament Profiles sync requires a container rebuild. Restart after updating dependencies.'
+                        : 'Click "Check for updates" to sync 3D Filament Profiles data.'
+                    : 'No filaments match the current filters.'
+                }
               </p>
             </div>
           )}
