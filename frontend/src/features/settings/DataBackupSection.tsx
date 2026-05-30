@@ -2,9 +2,10 @@ import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Download, Upload, FileText, FileJson, File,
-  Database, CheckCircle2, Server, Clock,
+  Database, CheckCircle2, Server, Clock, RefreshCw,
 } from 'lucide-react'
 import { dataApi } from '@/api/data'
+import { adminApi } from '@/api/admin'
 import type { ImportResult } from '@/types/api'
 import { spoolsApi } from '@/api/spools'
 import { useAuthStore } from '@/stores/auth'
@@ -62,6 +63,10 @@ export function DataBackupSection() {
   const serverBackupMutation = useMutation({
     mutationFn: dataApi.createServerBackup,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['serverBackups'] }),
+  })
+
+  const syncProfilesMutation = useMutation({
+    mutationFn: adminApi.syncFilamentProfiles,
   })
 
   const { data: serverBackups } = useQuery({
@@ -183,6 +188,36 @@ export function DataBackupSection() {
           }}
         />
       </SettingsCard>
+
+      {/* Sync filament profiles — admin only */}
+      {user?.role === 'admin' && (
+        <SettingsCard
+          title="Sync filament profiles"
+          description="Fetch the latest community filament profiles from 3DFilamentProfiles.com and update the local database."
+        >
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => syncProfilesMutation.mutate()}
+              loading={syncProfilesMutation.isPending}
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> Sync now
+            </Button>
+            {syncProfilesMutation.isSuccess && (
+              <p className="text-xs text-green-400">Sync complete</p>
+            )}
+            {syncProfilesMutation.error && (
+              <p className="text-xs text-red-400">{getErrorMessage(syncProfilesMutation.error)}</p>
+            )}
+          </div>
+          {syncProfilesMutation.isSuccess && syncProfilesMutation.data?.output && (
+            <pre className="mt-3 max-h-40 overflow-y-auto rounded-lg bg-surface-3 px-3 py-2 text-[11px] text-gray-400 whitespace-pre-wrap">
+              {syncProfilesMutation.data.output}
+            </pre>
+          )}
+        </SettingsCard>
+      )}
 
       {/* Auto-backup */}
       <SettingsCard

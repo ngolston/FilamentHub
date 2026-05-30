@@ -1,5 +1,9 @@
 """Admin-only endpoints for user management."""
 
+import asyncio
+import sys
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,6 +59,36 @@ async def update_user(
         user.is_active = body.is_active
     await db.flush()
     return user
+
+
+@router.post("/sync-filament-profiles")
+async def sync_filament_profiles(
+    current_user: User = Depends(require_admin),
+):
+    script = Path("/app/scripts/fetch_3dfp.py")
+    if not script.exists():
+        # fallback for local dev
+        script = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "fetch_3dfp.py"
+    if not script.exists():
+        raise HTTPException(status_code=500, detail="fetch_3dfp.py script not found")
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, str(script),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="Script timed out after 5 minutes")
+
+    if proc.returncode != 0:
+        raise HTTPException(
+            status_code=500,
+            detail=stderr.decode(errors="replace").strip() or "Script failed with no output",
+        )
+
+    return {"ok": True, "output": stdout.decode(errors="replace").strip()}
 
 
 @router.delete("/users/{user_id}", status_code=204)

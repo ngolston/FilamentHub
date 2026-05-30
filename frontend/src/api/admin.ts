@@ -13,4 +13,7 @@ export const adminApi = {
 
   deleteUser: (userId: string) =>
     api.delete(`/admin/users/${userId}`),
+
+  syncFilamentProfiles: () =>
+    api.post<{ ok: boolean; output: string }>('/admin/sync-filament-profiles').then((r) => r.data),
 }
