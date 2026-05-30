@@ -27,8 +27,33 @@ type SlotAssignment =
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MATERIALS = [
-  'PLA', 'PLA+', 'PETG', 'ABS', 'ASA', 'TPU', 'PA', 'PC',
-  'PLA-CF', 'PETG-CF', 'Silk', 'Matte', 'Wood fill', 'Other',
+  'PLA', 'PLA+', 'PETG', 'ABS', 'ASA', 'TPU', 'PA', 'PA12', 'PA6', 'PC',
+  'PET', 'PEI', 'PEEK', 'HIPS', 'PVA', 'PVB', 'PP', 'CPE', 'SBS',
+]
+
+const MATERIAL_TYPES = [
+  'Standard',
+  'Silk',
+  'Silk Rainbow',
+  'Matte',
+  'Satin',
+  'Metallic',
+  'Sparkle',
+  'Galaxy',
+  'Marble',
+  'Glow-in-Dark',
+  'Wood Fill',
+  'Carbon Fiber (CF)',
+  'Glass Fiber (GF)',
+  'Translucent',
+  'Gradient',
+  'Rainbow',
+  'Multicolor',
+  'Dual Color',
+  'Fuzzy',
+  'High Speed',
+  'Recycled',
+  'Other',
 ]
 
 const WEIGHT_PRESETS = [250, 500, 750, 1000, 2000]
@@ -61,14 +86,10 @@ const STATUSES: { value: SpoolStatus; label: string; color: string; desc: string
 const schema = z.object({
   brand_id:       z.coerce.number().optional(),
   filament_id:    z.coerce.number().optional(),
-  material:       z.string().min(1, 'Material is required'),
+  material:       z.string().optional(),
+  material_type:  z.string().optional(),
   diameter:       z.number().default(1.75),
   color_name:     z.string().optional(),
-  color_hex:      z
-    .string()
-    .regex(/^#[0-9A-Fa-f]{6}$/, 'Must be a valid 6-digit hex code')
-    .optional()
-    .or(z.literal('')),
   initial_weight: z.coerce.number().positive('Initial weight is required'),
   spool_weight:   z.coerce.number().min(0).optional(),
   used_weight:    z.coerce.number().min(0).default(0),
@@ -76,9 +97,6 @@ const schema = z.object({
   supplier:            z.string().optional(),
   product_url:         z.string().url('Must be a valid URL').optional().or(z.literal('')),
   purchase_date:       z.string().optional(),
-  extra_color_hex_2:   z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().or(z.literal('')),
-  extra_color_hex_3:   z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().or(z.literal('')),
-  extra_color_hex_4:   z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional().or(z.literal('')),
   purchase_price: z.coerce.number().min(0).optional(),
   name:           z.string().optional(),
   lot_nr:         z.string().optional(),
@@ -914,6 +932,7 @@ export default function EditSpoolPage() {
   const [status, setStatus]                 = useState<SpoolStatus>('storage')
   const [weightUnit, setWeightUnit]         = useState<'g' | 'kg'>('g')
   const [submitError, setSubmitError]       = useState('')
+  const [submitSuccess, setSubmitSuccess]   = useState(false)
   const [selectedBrand, setSelectedBrand]   = useState<BrandResponse | undefined>()
   const [selectedLocation, setSelectedLocation] = useState<LocationResponse | undefined>()
   const [filamentName, setFilamentName]     = useState('')
@@ -939,11 +958,15 @@ export default function EditSpoolPage() {
   const [initialAssignment, setInitialAssignment] = useState<SlotAssignment>(null)
   const [assignPrinterId,   setAssignPrinterId]   = useState<number | ''>('')
 
-  // Pull unique supplier names from the cached spools list (no extra network call)
-  const cachedSpoolsData = queryClient.getQueryData<{ items: { supplier: string | null }[] }>(['spools', 'all'])
+  // Pull unique supplier names from the spools list (shared with SpoolsPage cache)
+  const { data: allSpoolsData } = useQuery({
+    queryKey: ['spools', 'all'],
+    queryFn:  () => spoolsApi.list({ page_size: 200 }),
+    staleTime: 5 * 60_000,
+  })
   const knownSuppliers = useMemo(() =>
-    [...new Set((cachedSpoolsData?.items ?? []).map((s) => s.supplier).filter((s): s is string => !!s))].sort()
-  , [cachedSpoolsData])
+    [...new Set((allSpoolsData?.items ?? []).map((s) => s.supplier).filter((s): s is string => !!s))].sort()
+  , [allSpoolsData])
 
   // ── Form ───────────────────────────────────────────────────────────────────
   const {
@@ -958,6 +981,7 @@ export default function EditSpoolPage() {
       brand_id:       spool.brand?.id,
       filament_id:    spool.filament?.id,
       material:       spool.filament?.material ?? '',
+      material_type:  spool.material_type ?? '',
       diameter:       spool.filament?.diameter ?? 1.75,
       color_name:     spool.filament?.color_name ?? '',
       color_hex:      spool.filament?.color_hex ?? '',
@@ -1133,8 +1157,9 @@ export default function EditSpoolPage() {
         used_weight:    data.used_weight  ?? 0,
         purchase_date:      data.purchase_date  || undefined,
         purchase_price:     data.purchase_price || undefined,
-        supplier:           data.supplier    || undefined,
-        product_url:        data.product_url || undefined,
+        supplier:           data.supplier      || undefined,
+        product_url:        data.product_url   || undefined,
+        material_type:      data.material_type || undefined,
         color_hex:          colorHex || undefined,
         extra_color_hex_2:  colorHex2 || undefined,
         extra_color_hex_3:  colorHex3 || undefined,
@@ -1181,7 +1206,8 @@ export default function EditSpoolPage() {
 
       queryClient.invalidateQueries({ queryKey: ['spools'] })
       queryClient.invalidateQueries({ queryKey: ['printers'] })
-      navigate(-1)
+      setSubmitSuccess(true)
+      setTimeout(() => navigate(-1), 1200)
     },
     onError: (err) => setSubmitError(getErrorMessage(err)),
   })
@@ -1283,17 +1309,28 @@ export default function EditSpoolPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
-                <label className="text-sm font-medium text-gray-300">
-                  Material <span className="text-red-400">*</span>
-                </label>
+                <label className="text-sm font-medium text-gray-300">Material</label>
                 <select {...register('material')}
-                  className={`w-full rounded-lg border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none ${errors.material ? 'border-red-500' : 'border-surface-border'}`}>
+                  className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none">
                   <option value="">— Select material —</option>
+                  {watchedMaterial && !MATERIALS.includes(watchedMaterial) && (
+                    <option value={watchedMaterial}>{watchedMaterial}</option>
+                  )}
                   {MATERIALS.map((m) => <option key={m} value={m}>{m}</option>)}
                 </select>
-                <FieldError msg={errors.material?.message} />
               </div>
 
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-300">Material Type</label>
+                <select {...register('material_type')}
+                  className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none">
+                  <option value="">— Select type —</option>
+                  {MATERIAL_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex flex-col gap-1">
                 <label className="text-sm font-medium text-gray-300">
                   Diameter <span className="text-red-400">*</span>
@@ -1684,12 +1721,18 @@ export default function EditSpoolPage() {
       {/* ── Sticky footer ───────────────────────────────────────────────────── */}
       <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-surface-border bg-surface/90 backdrop-blur px-5 lg:px-7 py-3">
         <div className="flex items-center justify-end gap-3 max-w-5xl mx-auto">
-          <Button type="button" variant="ghost" onClick={() => navigate(-1)}>Cancel</Button>
+          {submitSuccess && (
+            <span className="flex items-center gap-1.5 text-sm text-green-400">
+              <Check className="h-4 w-4" /> Saved!
+            </span>
+          )}
+          <Button type="button" variant="ghost" onClick={() => navigate(-1)} disabled={submitSuccess}>Cancel</Button>
           <Button
             type="button"
             loading={submitMutation.isPending}
+            disabled={submitSuccess}
             onClick={handleSubmit(
-              (data) => { setSubmitError(''); submitMutation.mutate(data) },
+              (data) => { setSubmitError(''); setSubmitSuccess(false); submitMutation.mutate(data) },
               () => setSubmitError('Please fix the errors above before saving.'),
             )}
           >

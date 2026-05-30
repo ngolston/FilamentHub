@@ -272,6 +272,9 @@ class Spool(Base):
     extra_color_hex_3: Mapped[str | None] = mapped_column(String(7))
     extra_color_hex_4: Mapped[str | None] = mapped_column(String(7))
 
+    # Material type / finish (Silk, Matte, CF, Glow, etc.) — separate from base material
+    material_type: Mapped[str | None] = mapped_column(String(100))
+
     # Status
     status: Mapped[SpoolStatus] = mapped_column(Enum(SpoolStatus), default=SpoolStatus.storage)
     notes: Mapped[str | None] = mapped_column(Text)

@@ -1,20 +1,24 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Search, X, Package, Tag, Printer as PrinterIcon, ClipboardList,
   Zap, Settings as SettingsIcon, Clock, CornerDownLeft, AlertTriangle,
+  Globe, ArrowLeft, Check,
 } from 'lucide-react'
 import { spoolsApi } from '@/api/spools'
 import { brandsApi } from '@/api/brands'
 import { printersApi } from '@/api/printers'
 import { printJobsApi } from '@/api/print-jobs'
+import { communityApi } from '@/api/community'
+import { locationsApi } from '@/api/locations'
 import { cn } from '@/utils/cn'
 import type { SpoolResponse, BrandResponse, PrinterResponse, PrintJobResponse } from '@/types/api'
+import type { CommunityFilament } from '@/api/community'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type ResultType = 'spool' | 'brand' | 'printer' | 'history' | 'action' | 'setting'
+type ResultType = 'spool' | 'brand' | 'printer' | 'history' | 'action' | 'setting' | 'community'
 type FilterTab  = 'all' | ResultType
 
 interface SearchResult {
@@ -40,31 +44,34 @@ interface QuickJump {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const FILTER_TABS: { value: FilterTab; label: string }[] = [
-  { value: 'all',     label: 'All'      },
-  { value: 'spool',   label: 'Spools'   },
-  { value: 'brand',   label: 'Brands'   },
-  { value: 'printer', label: 'Printers' },
-  { value: 'history', label: 'History'  },
-  { value: 'action',  label: 'Actions'  },
-  { value: 'setting', label: 'Settings' },
+  { value: 'all',       label: 'All'       },
+  { value: 'spool',     label: 'Spools'    },
+  { value: 'community', label: 'Community' },
+  { value: 'brand',     label: 'Brands'    },
+  { value: 'printer',   label: 'Printers'  },
+  { value: 'history',   label: 'History'   },
+  { value: 'action',    label: 'Actions'   },
+  { value: 'setting',   label: 'Settings'  },
 ]
 
 const TYPE_ICON: Record<ResultType, React.ReactNode> = {
-  spool:   <Package      className="h-4 w-4" />,
-  brand:   <Tag          className="h-4 w-4" />,
-  printer: <PrinterIcon  className="h-4 w-4" />,
-  history: <ClipboardList className="h-4 w-4" />,
-  action:  <Zap          className="h-4 w-4" />,
-  setting: <SettingsIcon className="h-4 w-4" />,
+  spool:     <Package       className="h-4 w-4" />,
+  brand:     <Tag           className="h-4 w-4" />,
+  printer:   <PrinterIcon   className="h-4 w-4" />,
+  history:   <ClipboardList className="h-4 w-4" />,
+  action:    <Zap           className="h-4 w-4" />,
+  setting:   <SettingsIcon  className="h-4 w-4" />,
+  community: <Globe         className="h-4 w-4" />,
 }
 
 const TYPE_COLOR: Record<ResultType, string> = {
-  spool:   'bg-primary-900/50 text-primary-400',
-  brand:   'bg-cyan-900/40 text-cyan-400',
-  printer: 'bg-emerald-900/40 text-emerald-400',
-  history: 'bg-orange-900/40 text-orange-400',
-  action:  'bg-violet-900/40 text-violet-400',
-  setting: 'bg-surface-3 text-gray-400',
+  spool:     'bg-primary-900/50 text-primary-400',
+  brand:     'bg-cyan-900/40 text-cyan-400',
+  printer:   'bg-emerald-900/40 text-emerald-400',
+  history:   'bg-orange-900/40 text-orange-400',
+  action:    'bg-violet-900/40 text-violet-400',
+  setting:   'bg-surface-3 text-gray-400',
+  community: 'bg-rose-900/40 text-rose-400',
 }
 
 const STATIC_ACTIONS: SearchResult[] = [
@@ -319,10 +326,11 @@ export function CommandPalette({ isOpen, onClose }: Props) {
   const inputRef  = useRef<HTMLInputElement>(null)
   const listRef   = useRef<HTMLDivElement>(null)
 
-  const [query,         setQuery]     = useState('')
-  const [debounced,     setDebounced] = useState('')
-  const [activeTab,     setActiveTab] = useState<FilterTab>('all')
-  const [selectedIdx,   setIdx]       = useState(0)
+  const [query,           setQuery]     = useState('')
+  const [debounced,       setDebounced] = useState('')
+  const [activeTab,       setActiveTab] = useState<FilterTab>('all')
+  const [selectedIdx,     setIdx]       = useState(0)
+  const [communityImport, setCommunityImport] = useState<CommunityFilament | null>(null)
   const [recents, pushRecent, clearRecent] = useRecentSearches()
 
   // Debounce
@@ -338,6 +346,7 @@ export function CommandPalette({ isOpen, onClose }: Props) {
     setDebounced('')
     setActiveTab('all')
     setIdx(0)
+    setCommunityImport(null)
     setTimeout(() => inputRef.current?.focus(), 10)
   }, [isOpen])
 
@@ -367,6 +376,13 @@ export function CommandPalette({ isOpen, onClose }: Props) {
     queryKey: ['cmd-jobs'],
     queryFn:  () => printJobsApi.list({ page_size: 50 }),
     enabled:  isOpen,
+    staleTime: 30_000,
+  })
+
+  const { data: communityData } = useQuery({
+    queryKey: ['cmd-community', debounced],
+    queryFn:  () => communityApi.list({ search: debounced, page_size: 8 }),
+    enabled:  isOpen && debounced.length >= 2,
     staleTime: 30_000,
   })
 
@@ -443,6 +459,28 @@ export function CommandPalette({ isOpen, onClose }: Props) {
       })
     }
 
+    // Community filaments
+    for (const f of communityData?.items ?? []) {
+      const score = q
+        ? (Math.max(
+            scoreText(q, f.name,         1.0),
+            scoreText(q, f.manufacturer, 0.9),
+            scoreText(q, f.material,     0.85),
+            scoreText(q, f.color_name,   0.7),
+          ) || 20)
+        : (activeTab === 'community' ? 1 : 0)
+      if (score <= 0) continue
+      out.push({
+        id:       `community-${f.id}`,
+        type:     'community',
+        title:    f.name || f.color_name || f.material,
+        subtitle: `${f.manufacturer} · ${f.material}`,
+        colorHex: f.color_hex ?? undefined,
+        score,
+        action:   () => setCommunityImport(f),
+      })
+    }
+
     // Actions
     for (const a of STATIC_ACTIONS) {
       const score = q ? scoreStatic(q, a) : (activeTab === 'action' ? 1 : 0)
@@ -458,7 +496,7 @@ export function CommandPalette({ isOpen, onClose }: Props) {
     }
 
     return out.sort((a, b) => b.score - a.score)
-  }, [debounced, activeTab, spoolsData, brands, printers, jobsData])
+  }, [debounced, activeTab, spoolsData, brands, printers, jobsData, communityData, setCommunityImport])
 
   // Filtered by active tab
   const filtered = useMemo(
@@ -488,7 +526,10 @@ export function CommandPalette({ isOpen, onClose }: Props) {
   useEffect(() => {
     if (!isOpen) return
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { onClose(); return }
+      if (e.key === 'Escape') {
+        if (communityImport) { setCommunityImport(null); return }
+        onClose(); return
+      }
 
       if (e.key === 'Tab') {
         e.preventDefault()
@@ -506,7 +547,7 @@ export function CommandPalette({ isOpen, onClose }: Props) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [isOpen, onClose, filtered, selectedIdx, activeTab, activate])
+  }, [isOpen, onClose, filtered, selectedIdx, activeTab, activate, communityImport, setCommunityImport])
 
   // Scroll selected into view
   useEffect(() => {
@@ -532,7 +573,7 @@ export function CommandPalette({ isOpen, onClose }: Props) {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search spools, brands, printers, actions, settings…"
+            placeholder="Search spools, community filaments, brands, actions…"
             className="flex-1 bg-transparent text-sm text-white placeholder:text-gray-500 focus:outline-none"
           />
           {query ? (
@@ -549,8 +590,8 @@ export function CommandPalette({ isOpen, onClose }: Props) {
           )}
         </div>
 
-        {/* Filter tabs — only shown when searching */}
-        {hasQuery && (
+        {/* Filter tabs — only shown when searching and not in import panel */}
+        {hasQuery && !communityImport && (
           <div className="flex items-center gap-0.5 overflow-x-auto px-2 py-1.5 border-b border-surface-border shrink-0 scrollbar-none">
             {FILTER_TABS.map((tab) => {
               const count = counts[tab.value] ?? 0
@@ -583,7 +624,13 @@ export function CommandPalette({ isOpen, onClose }: Props) {
 
         {/* Body */}
         <div ref={listRef} className="flex-1 overflow-y-auto min-h-0">
-          {!hasQuery ? (
+          {communityImport ? (
+            <InlineCommunityImport
+              filament={communityImport}
+              onBack={() => setCommunityImport(null)}
+              onSuccess={onClose}
+            />
+          ) : !hasQuery ? (
             /* ── Home state ── */
             <div className="p-3 space-y-4">
               <div>
@@ -638,7 +685,7 @@ export function CommandPalette({ isOpen, onClose }: Props) {
               )}
 
               <p className="px-2 text-xs text-gray-600">
-                Type to search across spools, brands, printers, history, actions and settings.
+                Type to search across spools, community filaments, brands, printers, history, actions and settings.
               </p>
             </div>
           ) : filtered.length === 0 ? (
@@ -669,7 +716,7 @@ export function CommandPalette({ isOpen, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        {hasQuery && filtered.length > 0 && (
+        {hasQuery && filtered.length > 0 && !communityImport && (
           <div className="flex items-center justify-between border-t border-surface-border px-4 py-2 text-[11px] text-gray-600 shrink-0">
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1">
@@ -690,6 +737,164 @@ export function CommandPalette({ isOpen, onClose }: Props) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Inline community import panel ────────────────────────────────────────────
+
+function InlineCommunityImport({
+  filament,
+  onBack,
+  onSuccess,
+}: {
+  filament: CommunityFilament
+  onBack:   () => void
+  onSuccess: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [weight, setWeight]       = useState(String(filament.weights?.[0]?.weight ?? 1000))
+  const [locationId, setLocId]    = useState<string>('')
+  const [done, setDone]           = useState(false)
+
+  const { data: locations = [] } = useQuery({
+    queryKey: ['locations'],
+    queryFn:  locationsApi.list,
+    staleTime: 60_000,
+  })
+
+  const mutation = useMutation({
+    mutationFn: () => communityApi.import({
+      manufacturer:    filament.manufacturer,
+      name:            filament.name,
+      material:        filament.material,
+      color_name:      filament.color_name  ?? undefined,
+      color_hex:       filament.color_hex   ?? undefined,
+      diameter:        filament.diameter,
+      density:         filament.density     ?? undefined,
+      print_temp_min:  filament.print_temp_min ?? undefined,
+      print_temp_max:  filament.print_temp_max ?? undefined,
+      bed_temp_min:    filament.bed_temp_min   ?? undefined,
+      bed_temp_max:    filament.bed_temp_max   ?? undefined,
+      initial_weight:  parseFloat(weight) || 1000,
+      location_id:     locationId ? Number(locationId) : undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['spools'] })
+      setDone(true)
+      setTimeout(onSuccess, 900)
+    },
+  })
+
+  const presets = filament.weights ?? []
+
+  return (
+    <div className="p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onBack}
+          className="rounded-lg p-1 text-gray-500 hover:bg-surface-2 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+        </button>
+        <p className="text-sm font-semibold text-white">Add from Community Database</p>
+      </div>
+
+      {/* Filament card */}
+      <div className="flex items-center gap-3 rounded-xl border border-surface-border bg-surface-2 p-3">
+        <div
+          className="h-10 w-10 shrink-0 rounded-lg border border-white/10"
+          style={{ backgroundColor: filament.color_hex ?? '#374151' }}
+        />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-white truncate">
+            {filament.name || filament.color_name || filament.material}
+          </p>
+          <p className="text-xs text-gray-400 truncate">{filament.manufacturer} · {filament.material}</p>
+        </div>
+        <div className="text-right text-xs text-gray-500 shrink-0">
+          {filament.print_temp_min != null && (
+            <p>{filament.print_temp_min}–{filament.print_temp_max}°C</p>
+          )}
+          {filament.diameter && <p>{filament.diameter}mm</p>}
+        </div>
+      </div>
+
+      {/* Weight */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-medium text-gray-400">Starting weight (g)</label>
+        <input
+          type="number"
+          value={weight}
+          onChange={(e) => setWeight(e.target.value)}
+          className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none"
+        />
+        {presets.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap">
+            {presets.map((w) => (
+              <button
+                key={w.weight}
+                type="button"
+                onClick={() => setWeight(String(w.weight))}
+                className="rounded-full border border-surface-border bg-surface-2 px-2.5 py-0.5 text-xs text-gray-400 hover:bg-surface-3 hover:text-white transition-colors"
+              >
+                {w.weight}g
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Location */}
+      {locations.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-gray-400">Storage location</label>
+          <select
+            value={locationId}
+            onChange={(e) => setLocId(e.target.value)}
+            className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-white focus:border-primary-500 focus:outline-none"
+          >
+            <option value="">— None —</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>{l.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Error */}
+      {mutation.error && (
+        <p className="rounded-lg bg-red-900/40 border border-red-700/50 px-3 py-2 text-xs text-red-300">
+          {mutation.error instanceof Error ? mutation.error.message : 'Failed to add spool'}
+        </p>
+      )}
+
+      {/* Actions */}
+      {done ? (
+        <div className="flex items-center gap-2 justify-center py-2 text-sm text-green-400">
+          <Check className="h-4 w-4" /> Added to inventory!
+        </div>
+      ) : (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex-1 rounded-lg border border-surface-border bg-surface-2 px-4 py-2 text-sm text-gray-300 hover:bg-surface-3 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={mutation.isPending}
+            onClick={() => mutation.mutate()}
+            className="flex-1 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white hover:bg-primary-500 disabled:opacity-50 transition-colors"
+          >
+            {mutation.isPending ? 'Adding…' : 'Add to inventory'}
+          </button>
+        </div>
+      )}
     </div>
   )
 }

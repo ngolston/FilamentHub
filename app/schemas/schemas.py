@@ -253,6 +253,7 @@ class SpoolCreate(BaseModel):
     extra_color_hex_2: str | None = None
     extra_color_hex_3: str | None = None
     extra_color_hex_4: str | None = None
+    material_type: str | None = None
     status: str = "storage"
     notes: str | None = None
 
@@ -275,6 +276,7 @@ class SpoolUpdate(BaseModel):
     extra_color_hex_2: str | None = None
     extra_color_hex_3: str | None = None
     extra_color_hex_4: str | None = None
+    material_type: str | None = None
     status: str | None = None
     notes: str | None = None
 
@@ -309,6 +311,7 @@ class SpoolResponse(OrmBase):
     extra_color_hex_2: str | None
     extra_color_hex_3: str | None
     extra_color_hex_4: str | None
+    material_type: str | None
     status: str
     notes: str | None
     registered: datetime
