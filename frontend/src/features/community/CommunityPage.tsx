@@ -172,6 +172,19 @@ function FilamentCard({
         )}
       </div>
 
+      {/* Source badge */}
+      <div className="flex">
+        {f.source === '3dfilamentprofiles' ? (
+          <span className="rounded-full bg-accent-900/30 border border-accent-700/30 px-2 py-0.5 text-[10px] font-medium text-accent-400">
+            3D Filament Profiles
+          </span>
+        ) : (
+          <span className="rounded-full bg-surface-2 border border-surface-border px-2 py-0.5 text-[10px] font-medium text-gray-500">
+            SpoolmanDB
+          </span>
+        )}
+      </div>
+
       {/* Spec chips */}
       <div className="flex flex-wrap gap-1.5">
         <SpecChip>{f.material}</SpecChip>
@@ -238,6 +251,17 @@ function FilamentRow({
       </td>
       <td className="px-3 py-2.5">
         <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs text-gray-300">{f.material}</span>
+      </td>
+      <td className="px-3 py-2.5">
+        {f.source === '3dfilamentprofiles' ? (
+          <span className="rounded-full bg-accent-900/30 border border-accent-700/30 px-2 py-0.5 text-[10px] font-medium text-accent-400 whitespace-nowrap">
+            3DFP
+          </span>
+        ) : (
+          <span className="rounded-full bg-surface-2 border border-surface-border px-2 py-0.5 text-[10px] text-gray-500">
+            SDB
+          </span>
+        )}
       </td>
       <td className="px-3 py-2.5 text-xs text-gray-400 tabular-nums">{f.diameter}mm</td>
       <td className="px-3 py-2.5 text-xs text-gray-400 tabular-nums">
@@ -603,6 +627,7 @@ export default function CommunityPage() {
   const [brandFilter, setBrandFilter] = useState('')
   const [diaFilter,   setDiaFilter]   = useState('')
   const [colorFam,    setColorFam]    = useState('')
+  const [srcFilter,   setSrcFilter]   = useState('')
   const [tags,        setTags]        = useState<Set<string>>(new Set())
   const [minRating,   setMinRating]   = useState(0)
   const [importTarget, setImportTarget] = useState<CommunityFilament | null>(null)
@@ -696,6 +721,9 @@ export default function CommunityPage() {
     // Diameter filter
     if (diaFilter) items = items.filter((f) => String(f.diameter) === diaFilter)
 
+    // Source filter
+    if (srcFilter) items = items.filter((f) => f.source === srcFilter)
+
     // Color family filter
     if (colorFam) items = items.filter((f) => colorFamily(f.color_hex) === colorFam)
 
@@ -712,10 +740,10 @@ export default function CommunityPage() {
     if (minRating > 0) items = items.filter((f) => computeRating(f) >= minRating)
 
     return items
-  }, [allItems, tab, search, matFilter, brandFilter, diaFilter, colorFam, tags, minRating, importedIds])
+  }, [allItems, tab, search, matFilter, brandFilter, diaFilter, srcFilter, colorFam, tags, minRating, importedIds])
 
   // Reset page when filters change
-  useEffect(() => { setPage(1) }, [search, matFilter, brandFilter, diaFilter, colorFam, tags, minRating, tab])
+  useEffect(() => { setPage(1) }, [search, matFilter, brandFilter, diaFilter, srcFilter, colorFam, tags, minRating, tab])
 
   // ── Pagination ────────────────────────────────────────────────────────────
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -744,7 +772,7 @@ export default function CommunityPage() {
       .sort(([a], [b]) => a.localeCompare(b)),
     [brandCounts])
 
-  const hasFilters = search || matFilter || brandFilter || diaFilter || colorFam || tags.size > 0 || minRating > 0
+  const hasFilters = search || matFilter || brandFilter || diaFilter || srcFilter || colorFam || tags.size > 0 || minRating > 0
   const synced_at  = listData?.synced_at ?? statsData?.synced_at
 
   return (
@@ -764,7 +792,15 @@ export default function CommunityPage() {
                 >
                   SpoolmanDB
                 </a>
-                {' '}— a community-maintained open-source filament database.
+                {' '}and{' '}
+                <a
+                  href="https://3dfilamentprofiles.com"
+                  target="_blank" rel="noreferrer"
+                  className="text-primary-400 hover:text-primary-300 transition-colors"
+                >
+                  3D Filament Profiles
+                </a>
+                {' '}— community-maintained filament databases.
               </p>
             </div>
             {/* Sync button */}
@@ -952,9 +988,20 @@ export default function CommunityPage() {
               <option value="2.85">2.85mm</option>
             </select>
 
+            {/* Source */}
+            <select
+              value={srcFilter}
+              onChange={(e) => { setSrcFilter(e.target.value); setPage(1) }}
+              className="rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-gray-300 focus:border-primary-500 focus:outline-none"
+            >
+              <option value="">All sources</option>
+              <option value="spoolmandb">SpoolmanDB</option>
+              <option value="3dfilamentprofiles">3D Filament Profiles</option>
+            </select>
+
             {hasFilters && (
               <button
-                onClick={() => { setSearch(''); setMatFilter(''); setBrandFilter(''); setDiaFilter(''); setColorFam(''); setTags(new Set()); setMinRating(0) }}
+                onClick={() => { setSearch(''); setMatFilter(''); setBrandFilter(''); setDiaFilter(''); setSrcFilter(''); setColorFam(''); setTags(new Set()); setMinRating(0) }}
                 className="flex items-center gap-1.5 text-sm text-primary-400 hover:text-primary-300"
               >
                 <X className="h-3.5 w-3.5" /> Clear
@@ -1053,6 +1100,7 @@ export default function CommunityPage() {
                     <th className="w-8 px-3 py-2.5" />
                     <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500">Name</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 w-24">Material</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 w-16">Source</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 w-20">Diam.</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 w-28">Print temp</th>
                     <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 w-20">Weight</th>

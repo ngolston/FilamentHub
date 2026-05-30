@@ -1,28 +1,41 @@
-"""Community filament database endpoints (powered by SpoolmanDB)."""
+"""Community filament database endpoints (SpoolmanDB + 3DFilamentProfiles)."""
+
+import asyncio
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.api.v1.deps import get_current_user, require_editor
 from app.db.session import get_db
 from app.models.models import Brand, FilamentProfile, Spool, SpoolStatus, User
 from app.schemas.schemas import CommunityImportRequest, SpoolResponse
-from app.services import spoolmandb
+from app.services import filamentprofiles, spoolmandb
 
 router = APIRouter(prefix="/community", tags=["community"])
 
 
+async def _combined() -> tuple[list[dict], str | None]:
+    """Fetch and merge filaments from both sources concurrently."""
+    sdb_data, fp_data = await asyncio.gather(
+        spoolmandb.get_or_sync(),
+        filamentprofiles.get_or_sync(),
+    )
+    sdb = [{"source": "spoolmandb", **f} for f in sdb_data["filaments"]]
+    fp  = fp_data["filaments"]   # already have source field
+    return sdb + fp, sdb_data.get("synced_at")
+
+
 @router.get("/stats")
 async def community_stats(_: User = Depends(get_current_user)):
-    data = await spoolmandb.get_or_sync()
-    manufacturers = {f["manufacturer"] for f in data["filaments"]}
+    filaments, synced_at = await _combined()
+    manufacturers = {f["manufacturer"] for f in filaments}
+    sdb_data = await spoolmandb.get_or_sync()
     return {
-        "total_profiles":    len(data["filaments"]),
+        "total_profiles":    len(filaments),
         "total_brands":      len(manufacturers),
-        "contributor_count": data.get("contributor_count", 0),
-        "synced_at":         data.get("synced_at"),
+        "contributor_count": sdb_data.get("contributor_count", 0),
+        "synced_at":         synced_at,
     }
 
 
@@ -32,13 +45,15 @@ async def list_community_filaments(
     material:     str | None = None,
     diameter:     float | None = None,
     manufacturer: str | None = None,
+    source:       str | None = None,
     page:         int = Query(1, ge=1),
     page_size:    int = Query(500, ge=1, le=5000),
     _: User = Depends(get_current_user),
 ):
-    data = await spoolmandb.get_or_sync()
-    filaments = data["filaments"]
+    filaments, synced_at = await _combined()
 
+    if source:
+        filaments = [f for f in filaments if f.get("source") == source]
     if search:
         q = search.lower()
         filaments = [
@@ -46,7 +61,7 @@ async def list_community_filaments(
             if q in f["manufacturer"].lower()
             or q in f["name"].lower()
             or q in f["material"].lower()
-            or q in (f["color_name"] or "").lower()
+            or q in (f.get("color_name") or "").lower()
         ]
     if material:
         filaments = [f for f in filaments if f["material"] == material]
@@ -65,19 +80,23 @@ async def list_community_filaments(
         "page":      page,
         "page_size": page_size,
         "pages":     max(1, -(-total // page_size)),
-        "synced_at": data.get("synced_at"),
+        "synced_at": synced_at,
     }
 
 
 @router.post("/sync")
 async def sync_community(_: User = Depends(get_current_user)):
-    """Force a fresh pull from GitHub SpoolmanDB."""
-    data = await spoolmandb.sync()
-    manufacturers = {f["manufacturer"] for f in data["filaments"]}
+    """Force a fresh pull from both databases."""
+    sdb_data, _ = await asyncio.gather(
+        spoolmandb.sync(),
+        filamentprofiles.sync(),
+    )
+    filaments, _ = await _combined()
+    manufacturers = {f["manufacturer"] for f in filaments}
     return {
-        "total_profiles": len(data["filaments"]),
+        "total_profiles": len(filaments),
         "total_brands":   len(manufacturers),
-        "synced_at":      data["synced_at"],
+        "synced_at":      sdb_data["synced_at"],
     }
 
 
@@ -88,7 +107,6 @@ async def import_community_filament(
     db:           AsyncSession = Depends(get_db),
 ):
     """Import a community filament: find-or-create brand + filament profile, then create spool."""
-    # Find or create brand
     result = await db.execute(select(Brand).where(Brand.name == body.manufacturer))
     brand  = result.scalar_one_or_none()
     if not brand:
@@ -96,7 +114,6 @@ async def import_community_filament(
         db.add(brand)
         await db.flush()
 
-    # Create filament profile (always new — each import is a personal copy)
     profile = FilamentProfile(
         brand_id=brand.id,
         name=body.name,
@@ -115,7 +132,6 @@ async def import_community_filament(
     db.add(profile)
     await db.flush()
 
-    # Create spool
     spool = Spool(
         owner_id=current_user.id,
         filament_id=profile.id,
@@ -130,7 +146,6 @@ async def import_community_filament(
     db.add(spool)
     await db.flush()
 
-    # Eager-load relations for the response
     await db.refresh(spool, attribute_names=["filament", "brand", "location"])
     if spool.filament:
         await db.refresh(spool.filament, attribute_names=["brand"])

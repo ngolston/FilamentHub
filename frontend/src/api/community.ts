@@ -2,6 +2,7 @@ import { api } from './client'
 
 export interface CommunityFilament {
   id: string
+  source: 'spoolmandb' | '3dfilamentprofiles'
   manufacturer: string
   name: string
   material: string
@@ -23,6 +24,8 @@ export interface CommunityFilament {
   is_carbon: boolean
   is_wood: boolean
   multi_color: boolean
+  product_url?: string | null
+  profile_url?: string | null
 }
 
 export interface CommunityListResponse {
