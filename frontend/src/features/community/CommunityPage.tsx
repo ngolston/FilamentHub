@@ -1,8 +1,9 @@
-import { useState, useMemo, useEffect, useCallback } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Search, LayoutGrid, List, RefreshCw, Download, ExternalLink,
   Star, X, ChevronRight, Check, Database, Users, Package, Sparkles,
+  ChevronDown,
 } from 'lucide-react'
 import { communityApi } from '@/api/community'
 import { locationsApi } from '@/api/locations'
@@ -600,6 +601,106 @@ function DetailModal({ f, onClose, onImport }: { f: CommunityFilament; onClose: 
   )
 }
 
+// ── SearchableSelect ──────────────────────────────────────────────────────────
+
+function SearchableSelect({
+  value,
+  onChange,
+  placeholder,
+  options,
+}: {
+  value:       string
+  onChange:    (v: string) => void
+  placeholder: string
+  options:     { value: string; label: string }[]
+}) {
+  const [open,   setOpen]   = useState(false)
+  const [filter, setFilter] = useState('')
+  const containerRef        = useRef<HTMLDivElement>(null)
+  const inputRef            = useRef<HTMLInputElement>(null)
+
+  const filtered = filter
+    ? options.filter((o) => o.label.toLowerCase().includes(filter.toLowerCase()))
+    : options
+
+  const selectedLabel = options.find((o) => o.value === value)?.label
+
+  useEffect(() => {
+    if (!open) return
+    function handler(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+        setFilter('')
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [open])
+
+  function select(v: string) {
+    onChange(v)
+    setOpen(false)
+    setFilter('')
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => { setOpen((o) => !o); setFilter(''); setTimeout(() => inputRef.current?.focus(), 10) }}
+        className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none"
+      >
+        <span className={value ? 'text-white' : 'text-gray-400'}>{selectedLabel ?? placeholder}</span>
+        {value ? (
+          <X
+            className="h-3.5 w-3.5 text-gray-500 hover:text-white shrink-0"
+            onClick={(e) => { e.stopPropagation(); select('') }}
+          />
+        ) : (
+          <ChevronDown className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 z-50 mt-1 min-w-[200px] rounded-xl border border-surface-border bg-surface-1 shadow-2xl overflow-hidden">
+          <div className="p-2 border-b border-surface-border">
+            <input
+              ref={inputRef}
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder={`Search ${placeholder.toLowerCase()}…`}
+              className="w-full rounded-lg border border-surface-border bg-surface-2 px-3 py-1.5 text-sm text-white placeholder:text-gray-500 focus:outline-none focus:border-primary-500"
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => select('')}
+              className={`w-full px-3 py-2 text-left text-sm transition-colors ${!value ? 'text-primary-300 bg-primary-900/20' : 'text-gray-400 hover:bg-surface-2 hover:text-white'}`}
+            >
+              <span className="italic">{placeholder}</span>
+            </button>
+            {filtered.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => select(opt.value)}
+                className={`w-full flex items-center justify-between px-3 py-2 text-left text-sm transition-colors ${value === opt.value ? 'bg-primary-600/20 text-white' : 'text-gray-300 hover:bg-surface-2 hover:text-white'}`}
+              >
+                {opt.label}
+                {value === opt.value && <Check className="h-3.5 w-3.5 text-primary-400 shrink-0" />}
+              </button>
+            ))}
+            {filtered.length === 0 && (
+              <p className="px-3 py-3 text-sm text-gray-500 text-center">No matches</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 type TabKey = 'browse' | 'trending' | 'new' | 'imports'
@@ -709,16 +810,20 @@ export default function CommunityPage() {
       items = items.filter((f) => importedIds.has(f.id))
     }
 
-    // Search
+    // Multi-token search: every whitespace-separated token must match at least one field
     if (search) {
-      const q = search.toLowerCase()
-      items = items.filter(
-        (f) =>
-          f.manufacturer.toLowerCase().includes(q) ||
-          f.name.toLowerCase().includes(q) ||
-          f.material.toLowerCase().includes(q) ||
-          (f.color_name ?? '').toLowerCase().includes(q),
-      )
+      const tokens = search.toLowerCase().trim().split(/\s+/).filter(Boolean)
+      items = items.filter((f) => {
+        const fields = [
+          f.manufacturer.toLowerCase(),
+          f.name.toLowerCase(),
+          f.material.toLowerCase(),
+          (f.color_name  ?? '').toLowerCase(),
+          (f.finish      ?? '').toLowerCase(),
+          (f.color_hex   ?? '').toLowerCase(),
+        ]
+        return tokens.every((tok) => fields.some((field) => field.includes(tok)))
+      })
     }
 
     // Material filter
@@ -957,56 +1062,44 @@ export default function CommunityPage() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Brand, name, material, color…"
+                placeholder="e.g. Bambu Lab pla silk red — combine any words"
                 className="w-full rounded-lg border border-surface-border bg-surface-2 py-2 pl-9 pr-3 text-sm text-white placeholder:text-gray-500 focus:border-primary-500 focus:outline-none"
               />
             </div>
 
-            {/* Material */}
-            <select
+            <SearchableSelect
               value={matFilter}
-              onChange={(e) => { setMatFilter(e.target.value); setPage(1) }}
-              className="rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-gray-300 focus:border-primary-500 focus:outline-none"
-            >
-              <option value="">All materials</option>
-              {topMats.map(([mat]) => (
-                <option key={mat} value={mat}>{mat}</option>
-              ))}
-            </select>
+              onChange={(v) => { setMatFilter(v); setPage(1) }}
+              placeholder="All materials"
+              options={topMats.map(([mat]) => ({ value: mat, label: mat }))}
+            />
 
-            {/* Brand */}
-            <select
+            <SearchableSelect
               value={brandFilter}
-              onChange={(e) => { setBrandFilter(e.target.value); setPage(1) }}
-              className="rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-gray-300 focus:border-primary-500 focus:outline-none"
-            >
-              <option value="">All brands</option>
-              {topBrands.map(([brand]) => (
-                <option key={brand} value={brand}>{brand}</option>
-              ))}
-            </select>
+              onChange={(v) => { setBrandFilter(v); setPage(1) }}
+              placeholder="All brands"
+              options={topBrands.map(([brand]) => ({ value: brand, label: brand }))}
+            />
 
-            {/* Diameter */}
-            <select
+            <SearchableSelect
               value={diaFilter}
-              onChange={(e) => { setDiaFilter(e.target.value); setPage(1) }}
-              className="rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-gray-300 focus:border-primary-500 focus:outline-none"
-            >
-              <option value="">All diameters</option>
-              <option value="1.75">1.75mm</option>
-              <option value="2.85">2.85mm</option>
-            </select>
+              onChange={(v) => { setDiaFilter(v); setPage(1) }}
+              placeholder="All diameters"
+              options={[
+                { value: '1.75', label: '1.75mm' },
+                { value: '2.85', label: '2.85mm' },
+              ]}
+            />
 
-            {/* Source */}
-            <select
+            <SearchableSelect
               value={srcFilter}
-              onChange={(e) => { setSrcFilter(e.target.value); setPage(1) }}
-              className="rounded-lg border border-surface-border bg-surface-2 px-3 py-2 text-sm text-gray-300 focus:border-primary-500 focus:outline-none"
-            >
-              <option value="">All sources</option>
-              <option value="spoolmandb">SpoolmanDB</option>
-              <option value="3dfilamentprofiles">3D Filament Profiles</option>
-            </select>
+              onChange={(v) => { setSrcFilter(v); setPage(1) }}
+              placeholder="All sources"
+              options={[
+                { value: 'spoolmandb',         label: 'SpoolmanDB'           },
+                { value: '3dfilamentprofiles', label: '3D Filament Profiles' },
+              ]}
+            />
 
             {hasFilters && (
               <button
