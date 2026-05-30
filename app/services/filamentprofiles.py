@@ -1,11 +1,12 @@
 """3DFilamentProfiles.com community database sync service.
 
-Fetches filaments from https://3dfilamentprofiles.com using the Next.js RSC
-(React Server Components) wire format, parses and normalises the records,
-then caches the result in memory + on disk.
+Strategy:
+  1. Fetch /brands (RSC) → extract all ~1000 brand slugs.
+  2. Fetch /filaments/{slug} concurrently for each brand → parse filament records.
 
-RSC parsing approach ported from:
-  https://github.com/jklewa/filament-profiles-data/blob/main/parser.py
+The site is behind Vercel Bot Protection (TLS-fingerprint based).
+curl_cffi with impersonate="chrome120" presents Chrome's exact TLS handshake
+and passes the check transparently.
 """
 
 import asyncio
@@ -13,107 +14,93 @@ import hashlib
 import json
 import logging
 import re
-from collections import defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import httpx
-
 logger = logging.getLogger(__name__)
 
-BASE_URL   = "https://3dfilamentprofiles.com"
-CACHE_FILE = Path("/tmp/filamenthub_3dfp_cache.json")
+BASE_URL    = "https://3dfilamentprofiles.com"
+CACHE_FILE  = Path("/tmp/filamenthub_3dfp_cache.json")
+CONCURRENCY = 30
+IMPERSONATE = "chrome120"
 
-_cache: dict[str, Any] = {
-    "filaments": [],
-    "synced_at": None,
-}
+_cache: dict[str, Any] = {"filaments": [], "synced_at": None}
 _sync_lock = asyncio.Lock()
 
-# ── RSC parsing ───────────────────────────────────────────────────────────────
-# The site uses Next.js RSC streaming format:
-#   Each line is  <refId>:<json>  where json may reference other lines via "$refId".
-# We resolve all cross-references then find the filaments array.
+# ── RSC helpers ───────────────────────────────────────────────────────────────
 
-_REF_USE_RE = re.compile(r'"\\?\$([a-z0-9]+)"')
-_LINE_RE    = re.compile(r'^([a-z0-9]+):(.+)$')
+_LINE_RE      = re.compile(r'^([a-z0-9]+):(.+)$')
+_BRAND_KEY_RE = re.compile(r'"brand_key":"([^"]+)"')
 
 
-def _parse_rsc(lines: list[str]) -> list[dict]:
-    contents: dict[str, str] = {"undefined": "null"}
-    deps: dict[str, list[str]]   = {}
-    target_ref: str | None  = None
-    fallback_refs: list[str] = []
+def _find_data_array(body: str) -> list[dict] | None:
+    """Locate and parse the first `"data":[{...}]` array in an RSC line body."""
+    idx = body.find('"data":[{')
+    if idx == -1:
+        return None
+    arr_start = idx + 7  # points at '['
+    depth, in_str, escaped = 0, False, False
+    end = -1
+    for i, ch in enumerate(body[arr_start:], arr_start):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\" and in_str:
+            escaped = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end == -1:
+        return None
+    try:
+        data = json.loads(body[arr_start : end + 1])
+    except (json.JSONDecodeError, ValueError):
+        return None
+    if isinstance(data, list) and data and isinstance(data[0], dict) and "brand_name" in data[0]:
+        return data
+    return None
 
-    for line in lines:
+
+def _extract_filaments_from_rsc(text: str) -> list[dict]:
+    """Pull the filament data array from a brand-page RSC response."""
+    for line in text.splitlines():
+        if "brand_name" not in line:
+            continue
         m = _LINE_RE.match(line.strip())
         if not m:
             continue
-        ref, body = m.group(1), m.group(2)
-        contents[ref] = body
-        deps[ref] = _REF_USE_RE.findall(body)
-
-        if '"filaments":' in body:
-            rm = re.search(r'"filaments":\s*"\\?\$([a-z0-9]+)"', body)
-            if rm:
-                target_ref = rm.group(1)
-        if '{"data":[{' in body:
-            fallback_refs.append(ref)
-
-    # Resolve references iteratively (single pass is usually enough)
-    for ref in list(contents):
-        body = contents[ref]
-        for dep in deps.get(ref, []):
-            if dep in contents:
-                body = body.replace('"$' + dep + '"', contents[dep])
-                body = body.replace('"\\$' + dep + '"', contents[dep])
-        contents[ref] = body
-
-    # Try the direct target first
-    if target_ref and target_ref in contents:
-        try:
-            data = json.loads(contents[target_ref])
-            if isinstance(data, list) and data and isinstance(data[0], dict):
-                return data
-        except Exception:
-            pass
-
-    # Fallback: walk data nodes looking for filament-shaped records
-    for ref in fallback_refs:
-        try:
-            nodes = _find_filaments(json.loads(contents[ref]))
-            if nodes:
-                return nodes
-        except Exception:
-            continue
-
+        result = _find_data_array(m.group(2))
+        if result is not None:
+            return result
     return []
 
 
-def _find_filaments(node: Any, depth: int = 0) -> list[dict]:
-    if depth > 8:
-        return []
-    if isinstance(node, dict):
-        data = node.get("data")
-        if isinstance(data, list) and data and isinstance(data[0], dict) and "brand_name" in data[0]:
-            return data
-        for v in node.values():
-            r = _find_filaments(v, depth + 1)
-            if r:
-                return r
-    elif isinstance(node, list):
-        for item in node:
-            r = _find_filaments(item, depth + 1)
-            if r:
-                return r
-    return []
+def _get_brand_keys_from_rsc(text: str) -> list[str]:
+    """Pull all unique brand_key values from the /brands RSC response."""
+    keys: list[str] = []
+    seen: set[str] = set()
+    for m in _BRAND_KEY_RE.finditer(text):
+        k = m.group(1)
+        if k not in seen:
+            seen.add(k)
+            keys.append(k)
+    return keys
 
 
-# ── Data normalisation ────────────────────────────────────────────────────────
+# ── Normalisation ─────────────────────────────────────────────────────────────
 
 def _prop(f: dict, key: str) -> Any:
-    """Get a property value, falling back to default_properties."""
     val = (f.get("properties") or {}).get(key)
     if val is None:
         val = (f.get("default_properties") or {}).get(key)
@@ -125,16 +112,13 @@ def _normalize(f: dict) -> dict:
     material_type = (f.get("material_type") or "").strip()
     full_material = (
         f"{material} {material_type}"
-        if material_type and material_type.lower() != material.lower()
+        if material_type and material_type.lower() not in (material.lower(), "")
         else material
     )
-
-    mt = material_type.lower()
-    uid = hashlib.md5(f"3dfp:{f['id']}".encode()).hexdigest()[:14]
-
-    spool_w = _prop(f, "spool_weight")
-    price   = f.get("price_data") or {}
-    sc      = f.get("short_code")
+    mt    = material_type.lower()
+    uid   = hashlib.md5(f"3dfp:{f['id']}".encode()).hexdigest()[:14]
+    sc    = f.get("short_code")
+    price = f.get("price_data") or {}
 
     return {
         "id":             uid,
@@ -145,7 +129,7 @@ def _normalize(f: dict) -> dict:
         "color_name":     f.get("color"),
         "color_hex":      f.get("rgb"),
         "diameter":       1.75,
-        "weights":        [{"weight": 1000, "spool_weight": spool_w}],
+        "weights":        [{"weight": 1000, "spool_weight": _prop(f, "spool_weight")}],
         "density":        None,
         "print_temp_min": _prop(f, "temp_min"),
         "print_temp_max": _prop(f, "temp_max"),
@@ -159,7 +143,7 @@ def _normalize(f: dict) -> dict:
         "is_metallic":    any(x in mt for x in ("metallic", "silk", "sparkle")),
         "is_carbon":      any(x in mt for x in ("carbon", "cf")),
         "is_wood":        "wood" in mt,
-        "multi_color":    any(x in mt for x in ("multicolor", "multi-color", "multi color", "gradient")),
+        "multi_color":    any(x in mt for x in ("multicolor", "multi-color", "gradient")),
         "product_url":    f.get("website") or price.get("href"),
         "profile_url":    f"{BASE_URL}/filaments/{sc}" if sc else None,
     }
@@ -170,61 +154,124 @@ def _normalize(f: dict) -> dict:
 def _load_from_disk() -> bool:
     try:
         if CACHE_FILE.exists():
-            data = json.loads(CACHE_FILE.read_text())
+            data = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
             if data.get("filaments"):
                 _cache.update(data)
                 logger.info(
-                    "Loaded 3DFilamentProfiles cache: %d entries synced at %s",
+                    "Loaded 3DFilamentProfiles cache: %d entries (synced %s)",
                     len(_cache["filaments"]), _cache.get("synced_at"),
                 )
                 return True
-    except Exception as exc:
+    except OSError as exc:
         logger.warning("Failed to load 3DFilamentProfiles disk cache: %s", exc)
+    except (json.JSONDecodeError, KeyError) as exc:
+        logger.warning("Corrupt 3DFilamentProfiles disk cache: %s", exc)
     return False
 
 
 def _save_to_disk() -> None:
     try:
-        CACHE_FILE.write_text(json.dumps(_cache))
-    except Exception as exc:
+        CACHE_FILE.write_text(json.dumps(_cache), encoding="utf-8")
+    except OSError as exc:
         logger.warning("Failed to save 3DFilamentProfiles disk cache: %s", exc)
 
 
-# ── Core sync logic ───────────────────────────────────────────────────────────
+# ── Core sync ─────────────────────────────────────────────────────────────────
+
+_COMMON_HEADERS = {
+    "rsc":             "1",
+    "User-Agent":      (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept":          "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer":         f"{BASE_URL}/",
+}
+
 
 async def _do_sync() -> None:
     logger.info("Starting 3DFilamentProfiles sync…")
     try:
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(60.0),
-            headers={
-                "User-Agent": "Mozilla/5.0 FilamentHub/1.0",
-                "rsc":        "1",
-            },
-            follow_redirects=True,
-        ) as client:
-            resp = await client.get(f"{BASE_URL}/filaments")
-            resp.raise_for_status()
-            lines = resp.text.splitlines()
+        from curl_cffi.requests import AsyncSession  # type: ignore[import-untyped]
+    except ImportError:
+        logger.warning(
+            "curl_cffi not installed — skipping 3DFilamentProfiles sync. "
+            "Add curl_cffi>=0.7.0 to project dependencies."
+        )
+        return
 
-        raw = _parse_rsc(lines)
-        if not raw:
-            logger.warning("3DFilamentProfiles: RSC parse returned no filaments; keeping existing cache")
-            return
+    try:
+        async with AsyncSession(impersonate=IMPERSONATE) as session:
+            # Step 1: get all brand slugs from /brands
+            r = await session.get(
+                f"{BASE_URL}/brands",
+                headers={**_COMMON_HEADERS, "Next-Url": "/brands"},
+                timeout=60,
+            )
+            r.raise_for_status()
+            brand_keys = _get_brand_keys_from_rsc(r.text)
+            logger.info("3DFilamentProfiles: found %d brand slugs", len(brand_keys))
+            if not brand_keys:
+                logger.warning("3DFilamentProfiles: no brands found — skipping")
+                return
 
-        filaments = []
-        for f in raw:
-            if not f.get("deleted") and f.get("id"):
-                try:
-                    filaments.append(_normalize(f))
-                except Exception as exc:
-                    logger.debug("Skipping filament %s: %s", f.get("id"), exc)
+            # Step 2: fetch each brand page concurrently (throttled)
+            sem          = asyncio.Semaphore(CONCURRENCY)
+            all_filaments: list[dict] = []
+            errors       = 0
 
-        _cache["filaments"] = filaments
+            async def fetch_brand(slug: str) -> list[dict]:
+                nonlocal errors
+                async with sem:
+                    try:
+                        resp = await session.get(
+                            f"{BASE_URL}/filaments/{slug}",
+                            headers={**_COMMON_HEADERS, "Next-Url": f"/filaments/{slug}"},
+                            timeout=30,
+                        )
+                        if resp.status_code != 200:
+                            return []
+                        raw = _extract_filaments_from_rsc(resp.text)
+                        return [
+                            _normalize(item)
+                            for item in raw
+                            if item.get("id") and not item.get("deleted")
+                        ]
+                    except OSError as exc:
+                        errors += 1
+                        logger.debug("3DFP brand %s failed: %s", slug, exc)
+                        return []
+
+            results = await asyncio.gather(*[fetch_brand(s) for s in brand_keys])
+            for batch in results:
+                all_filaments.extend(batch)
+
+        if errors:
+            logger.info(
+                "3DFilamentProfiles: %d/%d brand pages failed",
+                errors, len(brand_keys),
+            )
+
+        # De-duplicate (same filament can appear under multiple brand pages)
+        seen: set[str] = set()
+        unique: list[dict] = []
+        for item in all_filaments:
+            if item["id"] not in seen:
+                seen.add(item["id"])
+                unique.append(item)
+
+        _cache["filaments"] = unique
         _cache["synced_at"] = datetime.now(UTC).isoformat()
         _save_to_disk()
-        logger.info("3DFilamentProfiles sync complete: %d entries", len(filaments))
-    except Exception as exc:
+        logger.info(
+            "3DFilamentProfiles sync complete: %d unique filaments from %d brands",
+            len(unique), len(brand_keys),
+        )
+
+    except OSError as exc:
+        logger.warning("3DFilamentProfiles sync failed (network): %s", exc)
+    except Exception as exc:  # noqa: BLE001
         logger.warning("3DFilamentProfiles sync failed: %s", exc)
 
 
